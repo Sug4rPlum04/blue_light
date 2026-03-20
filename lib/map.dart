@@ -1,12 +1,15 @@
-import 'package:flutter/material.dart';
-import 'package:blue_light/home.dart';
+import 'dart:async';
+
 import 'package:blue_light/friends.dart';
+import 'package:blue_light/home.dart';
 import 'package:blue_light/message.dart';
 import 'package:blue_light/profile.dart';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import 'dart:ui' as ui;
 
 class MyMapPage extends StatefulWidget {
   const MyMapPage({super.key, required this.title});
@@ -18,25 +21,297 @@ class MyMapPage extends StatefulWidget {
 }
 
 class _MyMapPageState extends State<MyMapPage> {
+  final MapController _mapController = MapController();
 
-  final List<Map<String, String>> _friends = List.generate(
-    25,
-        (i) => {
-      "name": "Friend ${i + 1}",
-      "photo": "https://cdn-icons-png.freepik.com/512/5400/5400308.png",
-    },
-  );
+  bool _isLoading = true;
+  bool _trackingEnabled = true;
+  bool _isLocating = false;
+  String? _statusMessage;
+  LatLng? _currentLatLng;
+  StreamSubscription<Position>? _positionSub;
 
-  // String _searchText = "";
+  @override
+  void initState() {
+    super.initState();
+    _initializeMapTracking();
+  }
+
+  @override
+  void dispose() {
+    _positionSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initializeMapTracking() async {
+    _positionSub?.cancel();
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _isLocating = true;
+      _statusMessage = null;
+      _currentLatLng = null;
+      _trackingEnabled = true;
+    });
+
+    try {
+      final User? user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLoading = false;
+          _isLocating = false;
+          _statusMessage = 'Please log in first.';
+        });
+        return;
+      }
+
+      bool trackingEnabled = true;
+      try {
+        final DocumentSnapshot<Map<String, dynamic>> snapshot =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .get()
+                .timeout(const Duration(seconds: 5));
+        trackingEnabled =
+            (snapshot.data()?['locationTrackingEnabled'] as bool?) ?? true;
+      } catch (_) {
+        trackingEnabled = true;
+      }
+
+      if (!trackingEnabled) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _trackingEnabled = false;
+          _isLoading = false;
+          _isLocating = false;
+        });
+        return;
+      }
+
+      final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLoading = false;
+          _isLocating = false;
+          _statusMessage = 'Location services are off on this device.';
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLoading = false;
+          _isLocating = false;
+          _statusMessage = 'Location permission denied.';
+        });
+        return;
+      }
+
+      final Position current = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      final LatLng firstFix = LatLng(current.latitude, current.longitude);
+      setState(() {
+        _currentLatLng = firstFix;
+        _isLoading = false;
+        _isLocating = false;
+      });
+
+      _positionSub = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 8,
+        ),
+      ).listen((Position position) {
+        if (!mounted) {
+          return;
+        }
+        final LatLng next = LatLng(position.latitude, position.longitude);
+        setState(() {
+          _currentLatLng = next;
+        });
+        _mapController.move(next, _mapController.camera.zoom);
+      });
+    } on TimeoutException {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+        _isLocating = false;
+        _statusMessage =
+            'Timed out waiting for GPS fix. Try again or check emulator location.';
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+        _isLocating = false;
+        _statusMessage = 'Unable to get your location right now.';
+      });
+    }
+  }
+
+  Widget _buildTrackingOffView() {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 330),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 12,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.location_off, size: 38, color: Colors.redAccent),
+              SizedBox(height: 12),
+              Text(
+                'Location tracking is off',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Go to Profile Settings to turn location tracking on.',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocationErrorView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Icon(Icons.gps_off_rounded, size: 38, color: Colors.redAccent),
+            const SizedBox(height: 12),
+            Text(
+              _statusMessage ?? 'Location unavailable.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 14),
+            ElevatedButton(
+              onPressed: _initializeMapTracking,
+              child: const Text('Try Again'),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                Geolocator.openAppSettings();
+              },
+              child: const Text('Open App Settings'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMapBody() {
+    if (_isLoading || _isLocating) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (!_trackingEnabled) {
+      return _buildTrackingOffView();
+    }
+
+    if (_currentLatLng == null) {
+      return _buildLocationErrorView();
+    }
+
+    return FlutterMap(
+      mapController: _mapController,
+      options: MapOptions(
+        initialCenter: _currentLatLng!,
+        initialZoom: 16,
+      ),
+      children: <Widget>[
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.example.blue_light',
+        ),
+        MarkerLayer(
+          markers: <Marker>[
+            Marker(
+              point: _currentLatLng!,
+              width: 70,
+              height: 70,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.lightBlue,
+                    child: const Icon(Icons.person_pin_circle, color: Colors.white),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      'You',
+                      style: TextStyle(color: Colors.white, fontSize: 11),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    // final filteredFriends = _friends.where((f) {
-    //   final name = (f["name"] ?? "").toLowerCase();
-    //   final query = _searchText.toLowerCase();
-    //   return name.contains(query);
-    // }).toList();
-
     return Scaffold(
       extendBody: true,
       appBar: AppBar(
@@ -44,12 +319,9 @@ class _MyMapPageState extends State<MyMapPage> {
         toolbarHeight: 100,
         title: Text(
           widget.title,
-          style: TextStyle(
-            color: Colors.white,
-          ),
+          style: const TextStyle(color: Colors.white),
         ),
-
-        actions: [
+        actions: <Widget>[
           Padding(
             padding: const EdgeInsets.only(right: 15),
             child: IconButton(
@@ -57,8 +329,9 @@ class _MyMapPageState extends State<MyMapPage> {
               onPressed: () {
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const MyProfilePage(title: "Profile"),
+                  MaterialPageRoute<MyProfilePage>(
+                    builder: (BuildContext context) =>
+                        const MyProfilePage(title: "Profile"),
                   ),
                 );
               },
@@ -66,14 +339,11 @@ class _MyMapPageState extends State<MyMapPage> {
           ),
         ],
       ),
-
       floatingActionButton: SizedBox(
         width: 72,
         height: 72,
         child: FloatingActionButton(
-          onPressed: () {
-
-          },
+          onPressed: () {},
           backgroundColor: Colors.lightBlueAccent,
           shape: const CircleBorder(),
           elevation: 6,
@@ -81,7 +351,6 @@ class _MyMapPageState extends State<MyMapPage> {
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-
       bottomNavigationBar: BottomAppBar(
         shape: const CircularNotchedRectangle(),
         notchMargin: 8,
@@ -90,32 +359,31 @@ class _MyMapPageState extends State<MyMapPage> {
           height: 70,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              //_navItem(icon: Icons.home_rounded, label: "Home", onTap: () {}),
+            children: <Widget>[
               _navItem(
                 icon: Icons.home_rounded,
                 label: "Home",
                 onTap: () {
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(
-                      builder: (context) => const MyHomePage(title: "Home"),
+                    MaterialPageRoute<MyHomePage>(
+                      builder: (BuildContext context) =>
+                          const MyHomePage(title: "Home"),
                     ),
                   );
                 },
               ),
               _navItem(icon: Icons.location_on, label: "Map", onTap: () {}),
-
               const SizedBox(width: 40),
-
               _navItem(
                 icon: Icons.chat_rounded,
                 label: "Messages",
                 onTap: () {
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(
-                      builder: (context) => const MyMessagePage(title: "Messages"),
+                    MaterialPageRoute<MyMessagePage>(
+                      builder: (BuildContext context) =>
+                          const MyMessagePage(title: "Messages"),
                     ),
                   );
                 },
@@ -126,8 +394,9 @@ class _MyMapPageState extends State<MyMapPage> {
                 onTap: () {
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(
-                      builder: (context) => const MyFriendsPage(title: "Friends"),
+                    MaterialPageRoute<MyFriendsPage>(
+                      builder: (BuildContext context) =>
+                          const MyFriendsPage(title: "Friends"),
                     ),
                   );
                 },
@@ -136,73 +405,9 @@ class _MyMapPageState extends State<MyMapPage> {
           ),
         ),
       ),
-
-      body: FlutterMap(
-        options: MapOptions(
-          initialCenter: const LatLng(40.7128, -74.0060),
-          initialZoom: 15,
-        ),
-        children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.example.blue_light',
-          ),
-          MarkerLayer(
-            markers: [
-              Marker(
-                point: const LatLng(40.7128, -74.0060),
-                width: 60,
-                height: 70,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircleAvatar(
-                      radius: 22,
-                      backgroundImage: NetworkImage(
-                        "https://cdn-icons-png.freepik.com/512/5400/5400308.png",
-                      ),
-                    ),
-
-                    CustomPaint(
-                      size: const Size(14,10),
-                      painter: _TrianglePainter(),
-                    ),
-                    // Container(
-                    //   width: 0,
-                    //   height: 0,
-                    //   decoration: const BoxDecoration(),
-                    //   child: const Icon(
-                    //     Icons.location_on,
-                    //     color: Colors.red,
-                    //     size: 26,
-                    //   ),
-                    // ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+      body: _buildMapBody(),
     );
   }
-}
-
-class _TrianglePainter extends CustomPainter {
-  @override
-  void paint(ui.Canvas canvas, ui.Size size) {
-    final paint = ui.Paint()..color = Colors.lightBlue;
-
-    final path = ui.Path()
-      ..moveTo(size.width / 2, size.height)
-      ..lineTo(0,0)
-      ..lineTo(size.width, 0)
-      ..close();
-
-    canvas.drawPath(path, paint);
-  }
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 
 Widget _navItem({
@@ -216,7 +421,7 @@ Widget _navItem({
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: [
+        children: <Widget>[
           Icon(icon, color: Colors.white),
           const SizedBox(height: 4),
           Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),

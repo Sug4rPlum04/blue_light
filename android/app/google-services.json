@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "130229530955",
+    "project_id": "blue-light-7248e",
+    "storage_bucket": "blue-light-7248e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:130229530955:android:72fad8d309ab7d16b0b8ce",
+        "android_client_info": {
+          "package_name": "com.example.blue_light"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDtkioXRtqlENAShwMo5C0AKGDYvKIpDNM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
