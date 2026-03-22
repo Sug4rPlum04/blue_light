@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:blue_light/ui/shell_chrome.dart';
 
 class MyMapPage extends StatefulWidget {
   const MyMapPage({super.key, required this.title});
@@ -280,7 +281,7 @@ class _MyMapPageState extends State<MyMapPage> {
             Marker(
               point: _currentLatLng!,
               width: 70,
-              height: 70,
+              height: 82,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
@@ -298,7 +299,7 @@ class _MyMapPageState extends State<MyMapPage> {
                     ),
                     child: const Text(
                       'You',
-                      style: TextStyle(color: Colors.white, fontSize: 11),
+                      style: TextStyle(color: Colors.white, fontSize: 10.5),
                     ),
                   ),
                 ],
@@ -314,96 +315,54 @@ class _MyMapPageState extends State<MyMapPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      appBar: AppBar(
-        backgroundColor: Colors.lightBlue,
-        toolbarHeight: 100,
-        title: Text(
-          widget.title,
-          style: const TextStyle(color: Colors.white),
-        ),
-        actions: <Widget>[
-          Padding(
-            padding: const EdgeInsets.only(right: 15),
-            child: IconButton(
-              icon: const Icon(Icons.person, color: Colors.white, size: 30),
-              onPressed: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute<MyProfilePage>(
-                    builder: (BuildContext context) =>
-                        const MyProfilePage(title: "Profile"),
-                  ),
-                );
-              },
+      appBar: BlueLightTopBar(
+        title: widget.title,
+        onProfileTap: () {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute<MyProfilePage>(
+              builder: (BuildContext context) =>
+                  const MyProfilePage(title: "Profile"),
             ),
-          ),
-        ],
+          );
+        },
       ),
-      floatingActionButton: SizedBox(
-        width: 72,
-        height: 72,
-        child: FloatingActionButton(
-          onPressed: () {},
-          backgroundColor: Colors.lightBlueAccent,
-          shape: const CircleBorder(),
-          elevation: 6,
-          child: const Icon(Icons.add, color: Colors.white),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        color: Colors.lightBlue,
-        child: SizedBox(
-          height: 70,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: <Widget>[
-              _navItem(
-                icon: Icons.home_rounded,
-                label: "Home",
-                onTap: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute<MyHomePage>(
-                      builder: (BuildContext context) =>
-                          const MyHomePage(title: "Home"),
-                    ),
-                  );
-                },
+      floatingActionButton: buildBlueLightFab(() {}),
+      floatingActionButtonLocation: blueLightFabLocation,
+      bottomNavigationBar: BlueLightBottomNav(
+        currentIndex: 1,
+        onTap: (int index) {
+          if (index == 1) {
+            return;
+          }
+          if (index == 0) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute<MyHomePage>(
+                builder: (BuildContext context) =>
+                    const MyHomePage(title: "Home"),
               ),
-              _navItem(icon: Icons.location_on, label: "Map", onTap: () {}),
-              const SizedBox(width: 40),
-              _navItem(
-                icon: Icons.chat_rounded,
-                label: "Messages",
-                onTap: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute<MyMessagePage>(
-                      builder: (BuildContext context) =>
-                          const MyMessagePage(title: "Messages"),
-                    ),
-                  );
-                },
+            );
+            return;
+          }
+          if (index == 2) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute<MyMessagePage>(
+                builder: (BuildContext context) =>
+                    const MyMessagePage(title: "Messages"),
               ),
-              _navItem(
-                icon: Icons.people_alt_rounded,
-                label: "Friends",
-                onTap: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute<MyFriendsPage>(
-                      builder: (BuildContext context) =>
-                          const MyFriendsPage(title: "Friends"),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
+            );
+            return;
+          }
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute<MyFriendsPage>(
+              builder: (BuildContext context) =>
+                  const MyFriendsPage(title: "Friends"),
+            ),
+          );
+        },
       ),
       body: _buildMapBody(),
     );

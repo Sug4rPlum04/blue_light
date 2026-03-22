@@ -70,37 +70,53 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     final ColorScheme colors = Theme.of(context).colorScheme;
 
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: <Color>[
-              colors.secondaryContainer,
-              Colors.white,
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      body: Stack(
+        children: <Widget>[
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: <Color>[
+                  Color(0xFF0A4F96),
+                  Color(0xFF2A8BE8),
+                  Color(0xFFEAF4FF),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Card(
-                elevation: 10,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(22),
-                  child: Column(
+          Positioned(
+            bottom: -40,
+            right: -25,
+            child: Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.09),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Card(
+                  elevation: 14,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(22),
+                    child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       CircleAvatar(
                         radius: 26,
-                        backgroundColor: colors.secondary.withOpacity(0.12),
+                        backgroundColor: colors.primary.withOpacity(0.12),
                         child: Icon(
                           Icons.lock_reset_rounded,
-                          color: colors.secondary,
+                          color: colors.primary,
                           size: 28,
                         ),
                       ),
@@ -165,7 +181,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                         width: double.infinity,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: colors.secondary,
+                            backgroundColor: colors.primary,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -202,7 +218,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
               ),
             ),
           ),
-        ),
+          ),
+        ],
       ),
     );
   }

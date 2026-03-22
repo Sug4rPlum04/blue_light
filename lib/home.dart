@@ -3,6 +3,7 @@ import 'package:blue_light/friends.dart';
 import 'package:blue_light/message.dart';
 import 'package:blue_light/map.dart';
 import 'package:blue_light/profile.dart';
+import 'package:blue_light/ui/shell_chrome.dart';
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
@@ -22,103 +23,53 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.lightBlue,
-        toolbarHeight: 100,
-        title: Text(
-          widget.title,
-          style: TextStyle(
-            color: Colors.white,
-          ),
-        ),
-
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 15),
-            child: IconButton(
-              icon: const Icon(Icons.person, color: Colors.white, size: 30),
-              onPressed: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const MyProfilePage(title: "Profile"),
-                  ),
-                );
-              },
+      appBar: BlueLightTopBar(
+        title: widget.title,
+        onProfileTap: () {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (BuildContext context) =>
+                  const MyProfilePage(title: "Profile"),
             ),
-          ),
-        ],
+          );
+        },
       ),
-
-      floatingActionButton: SizedBox(
-        width: 72,
-        height: 72,
-        child: FloatingActionButton(
-          onPressed: () {
-
-          },
-          backgroundColor: Colors.lightBlueAccent,
-          shape: const CircleBorder(),
-          elevation: 6,
-          child: const Icon(Icons.add, color: Colors.white),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        color: Colors.lightBlue,
-        child: SizedBox(
-          height: 70,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _navItem(icon: Icons.home_rounded, label: "Home", onTap: () {}),
-              _navItem(
-                icon: Icons.location_on,
-                label: "Map",
-                onTap: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const MyMapPage(title: "Map"),
-                    ),
-                  );
-                },
+      floatingActionButton: buildBlueLightFab(() {}),
+      floatingActionButtonLocation: blueLightFabLocation,
+      bottomNavigationBar: BlueLightBottomNav(
+        currentIndex: 0,
+        onTap: (int index) {
+          if (index == 0) {
+            return;
+          }
+          if (index == 1) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (BuildContext context) => const MyMapPage(title: "Map"),
               ),
-
-              const SizedBox(width: 40),
-
-              //_navItem(icon: Icons.chat_rounded, label: "Messages", onTap: () {}),
-              _navItem(
-                icon: Icons.chat_rounded,
-                label: "Messages",
-                onTap: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const MyMessagePage(title: "Messages"),
-                    ),
-                  );
-                },
+            );
+            return;
+          }
+          if (index == 2) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (BuildContext context) =>
+                    const MyMessagePage(title: "Messages"),
               ),
-              // _navItem(icon: Icons.people_alt_rounded, label: "Friends", onTap: () {}),
-              _navItem(
-                  icon: Icons.people_alt_rounded,
-                  label: "Friends",
-                  onTap: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MyFriendsPage(title: "Friends"),
-                      ),
-                    );
-                  },
-              ),
-            ],
-          ),
-        ),
+            );
+            return;
+          }
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (BuildContext context) =>
+                  const MyFriendsPage(title: "Friends"),
+            ),
+          );
+        },
       ),
 
       body: SingleChildScrollView(
@@ -342,7 +293,7 @@ class _MyHomePageState extends State<MyHomePage> {
             ],
           ),
           child: SizedBox(
-            height: 170,
+            height: 184,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               itemCount: 8,
@@ -395,21 +346,21 @@ class _MyHomePageState extends State<MyHomePage> {
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
           CircleAvatar(
             radius: 28,
             backgroundImage: NetworkImage(photoUrl),
             backgroundColor: Colors.grey.shade200,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
             name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             mutualsText,
             maxLines: 2,
@@ -418,24 +369,34 @@ class _MyHomePageState extends State<MyHomePage> {
             style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
 
           SizedBox(
-            width: 100,
-            height: 25,
-            child: ElevatedButton.icon(
-              onPressed: () {
-
-              },
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text("Add"),
+            width: 104,
+            height: 30,
+            child: ElevatedButton(
+              onPressed: () {},
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.lightBlue,
                 foregroundColor: Colors.white,
                 elevation: 0,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 0),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Icon(Icons.add, size: 14),
+                  SizedBox(width: 4),
+                  Text(
+                    "Add",
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                  ),
+                ],
               ),
             ),
           )

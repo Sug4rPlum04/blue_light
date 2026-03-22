@@ -4,6 +4,7 @@ import 'package:blue_light/message.dart';
 import 'package:blue_light/map.dart';
 import 'package:blue_light/profile.dart';
 import 'package:blue_light/add_friend.dart';
+import 'package:blue_light/ui/shell_chrome.dart';
 
 class MyFriendsPage extends StatefulWidget {
   const MyFriendsPage({super.key, required this.title});
@@ -35,104 +36,52 @@ class _MyFriendsPageState extends State<MyFriendsPage> {
     }).toList();
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.lightBlue,
-        toolbarHeight: 100,
-        title: Text(
-          widget.title,
-          style: TextStyle(
-            color: Colors.white,
-          ),
-        ),
-
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 15),
-            child: IconButton(
-              icon: const Icon(Icons.person, color: Colors.white, size: 30),
-              onPressed: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const MyProfilePage(title: "Profile"),
-                  ),
-                );
-              },
+      appBar: BlueLightTopBar(
+        title: widget.title,
+        onProfileTap: () {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (BuildContext context) =>
+                  const MyProfilePage(title: "Profile"),
             ),
-          ),
-        ],
+          );
+        },
       ),
-
-      floatingActionButton: SizedBox(
-        width: 72,
-        height: 72,
-        child: FloatingActionButton(
-          onPressed: () {
-
-          },
-          backgroundColor: Colors.lightBlueAccent,
-          shape: const CircleBorder(),
-          elevation: 6,
-          child: const Icon(Icons.add, color: Colors.white),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        color: Colors.lightBlue,
-        child: SizedBox(
-          height: 70,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              //_navItem(icon: Icons.home_rounded, label: "Home", onTap: () {}),
-              _navItem(
-                  icon: Icons.home_rounded,
-                  label: "Home",
-                  onTap: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MyHomePage(title: "Home"),
-                      ),
-                    );
-                  },
+      floatingActionButton: buildBlueLightFab(() {}),
+      floatingActionButtonLocation: blueLightFabLocation,
+      bottomNavigationBar: BlueLightBottomNav(
+        currentIndex: 3,
+        onTap: (int index) {
+          if (index == 3) {
+            return;
+          }
+          if (index == 0) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (BuildContext context) => const MyHomePage(title: "Home"),
               ),
-              // _navItem(icon: Icons.location_on, label: "Map", onTap: () {}),
-              _navItem(
-                icon: Icons.location_on,
-                label: "Map",
-                onTap: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const MyMapPage(title: "Map"),
-                    ),
-                  );
-                },
+            );
+            return;
+          }
+          if (index == 1) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (BuildContext context) => const MyMapPage(title: "Map"),
               ),
-
-              const SizedBox(width: 40),
-
-              // _navItem(icon: Icons.chat_rounded, label: "Messages", onTap: () {}),
-              _navItem(
-                icon: Icons.chat_rounded,
-                label: "Messages",
-                onTap: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const MyMessagePage(title: "Messages"),
-                    ),
-                  );
-                },
-              ),
-              _navItem(icon: Icons.people_alt_rounded, label: "Friends", onTap: () {}),
-            ],
-          ),
-        ),
+            );
+            return;
+          }
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (BuildContext context) =>
+                  const MyMessagePage(title: "Messages"),
+            ),
+          );
+        },
       ),
 
       body: Padding(

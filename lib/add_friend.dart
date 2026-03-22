@@ -4,6 +4,7 @@ import 'package:blue_light/message.dart';
 import 'package:blue_light/map.dart';
 import 'package:blue_light/profile.dart';
 import 'package:blue_light/friends.dart';
+import 'package:blue_light/ui/app_chrome.dart';
 
 class MyAddFriendsPage extends StatefulWidget {
   const MyAddFriendsPage({super.key, required this.title});
@@ -46,32 +47,17 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
         : _followRequests.take(3).toList();
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.lightBlue,
-        toolbarHeight: 100,
-        title: Text(
-          widget.title,
-          style: const TextStyle(
-            color: Colors.white,
-          ),
-        ),
-
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 15),
-            child: IconButton(
-              icon: const Icon(Icons.person, color: Colors.white, size: 30),
-              onPressed: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const MyProfilePage(title: "Profile"),
-                  ),
-                );
-              },
+      appBar: buildBlueLightAppBar(
+        title: widget.title,
+        onProfileTap: () {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (BuildContext context) =>
+                  const MyProfilePage(title: "Profile"),
             ),
-          ),
-        ],
+          );
+        },
       ),
 
       // floatingActionButton: SizedBox(
