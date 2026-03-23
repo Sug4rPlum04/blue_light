@@ -3,6 +3,9 @@ import 'package:blue_light/friends.dart';
 import 'package:blue_light/message.dart';
 import 'package:blue_light/map.dart';
 import 'package:blue_light/profile.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:blue_light/ui/emergency_alerts.dart';
 import 'package:blue_light/ui/shell_chrome.dart';
 
 class MyHomePage extends StatefulWidget {
@@ -15,9 +18,8 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-
-  final List<String> _activityLogs =
-      List.generate(15, (i) => "Activity log ${i + 1}");
+  final List<String> _fallbackActivityLogs =
+      List.generate(5, (int i) => "Activity log ${i + 1}");
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +35,9 @@ class _MyHomePageState extends State<MyHomePage> {
                   const MyProfilePage(title: "Profile"),
             ),
           );
+        },
+        onEmergencyTap: () {
+          showEmergencyAlertDialog(context);
         },
       ),
       floatingActionButton: buildBlueLightFab(() {}),
@@ -80,102 +85,150 @@ class _MyHomePageState extends State<MyHomePage> {
               _nearbyFriendsCard(),
               const SizedBox(height: 20),
 
-              Stack(
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top:20),
-                    padding: const EdgeInsets.fromLTRB(20,30,20,20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 10,
-                          offset: Offset(0,4),
-                        ),
-                      ],
-                    ),
-
-                    child: AnimatedSize(
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeInOut,
-                      child: ListView.builder(
-                        itemCount: _activityLogs.length,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemBuilder: (context, index) {
-                          final text = _activityLogs[index];
-
-                          return Dismissible(
-                            key: ValueKey("$text-$index"),
-                            direction: DismissDirection.endToStart,
-
-                            background: Container(
-                              margin: const EdgeInsets.symmetric(vertical: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 20),
-                              alignment: Alignment.centerRight,
-                              decoration: BoxDecoration(
-                                color: Colors.red,
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              child: const Icon(Icons.delete, color: Colors.white),
-                            ),
-
-                            onDismissed: (_) {
-                              setState(() {
-                                _activityLogs.removeAt(index);
-                              });
-                            },
-
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(vertical: 8),
-                              padding: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.shade50,
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.notifications, color: Colors.blue),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      text,
-                                      style: const TextStyle(fontSize: 15),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  const Positioned(
-                    left: 20,
-                    child: ColoredBox(
-                      color: Colors.white,
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 10),
-                        child: Text(
-                          "Activity",
-                          style: TextStyle(
-                            fontSize: 25,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              _activityCard(),
               const SizedBox(height: 20),
               _suggestedFriendsCard(),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _activityCard() {
+    final User? user = FirebaseAuth.instance.currentUser;
+    final Stream<QuerySnapshot<Map<String, dynamic>>>? activityStream =
+        user == null
+            ? null
+            : FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .collection('activity')
+                .orderBy('createdAt', descending: true)
+                .limit(20)
+                .snapshots();
+
+    return Stack(
+      children: <Widget>[
+        Container(
+          margin: const EdgeInsets.only(top: 20),
+          padding: const EdgeInsets.fromLTRB(20, 30, 20, 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 10,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: activityStream == null
+              ? _buildFallbackActivityList()
+              : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: activityStream,
+                  builder: (
+                    BuildContext context,
+                    AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snapshot,
+                  ) {
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        !snapshot.hasData) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs =
+                        snapshot.data?.docs ?? <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                    if (docs.isEmpty) {
+                      return _buildFallbackActivityList();
+                    }
+                    return ListView.builder(
+                      itemCount: docs.length,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemBuilder: (BuildContext context, int index) {
+                        final QueryDocumentSnapshot<Map<String, dynamic>> doc =
+                            docs[index];
+                        final Map<String, dynamic> data = doc.data();
+                        final String text = (data['title'] as String?)?.trim().isNotEmpty == true
+                            ? data['title'] as String
+                            : (data['message'] as String?) ??
+                                'You have a new activity update.';
+                        return Dismissible(
+                          key: ValueKey<String>(doc.id),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            margin: const EdgeInsets.symmetric(vertical: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            alignment: Alignment.centerRight,
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            child: const Icon(Icons.delete, color: Colors.white),
+                          ),
+                          onDismissed: (_) {
+                            doc.reference.delete();
+                          },
+                          child: _activityTile(text),
+                        );
+                      },
+                    );
+                  },
+                ),
+        ),
+        const Positioned(
+          left: 20,
+          child: ColoredBox(
+            color: Colors.white,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: Text(
+                "Activity",
+                style: TextStyle(
+                  fontSize: 25,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFallbackActivityList() {
+    return ListView.builder(
+      itemCount: _fallbackActivityLogs.length,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemBuilder: (BuildContext context, int index) {
+        return _activityTile(_fallbackActivityLogs[index]);
+      },
+    );
+  }
+
+  Widget _activityTile(String text) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Row(
+        children: <Widget>[
+          const Icon(Icons.notifications, color: Colors.blue),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 15),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -4,6 +4,7 @@ import 'package:blue_light/message.dart';
 import 'package:blue_light/map.dart';
 import 'package:blue_light/profile.dart';
 import 'package:blue_light/add_friend.dart';
+import 'package:blue_light/ui/emergency_alerts.dart';
 import 'package:blue_light/ui/shell_chrome.dart';
 
 class MyFriendsPage extends StatefulWidget {
@@ -46,6 +47,9 @@ class _MyFriendsPageState extends State<MyFriendsPage> {
                   const MyProfilePage(title: "Profile"),
             ),
           );
+        },
+        onEmergencyTap: () {
+          showEmergencyAlertDialog(context);
         },
       ),
       floatingActionButton: buildBlueLightFab(() {}),

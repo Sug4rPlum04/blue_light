@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:blue_light/ui/emergency_alerts.dart';
 import 'package:blue_light/ui/shell_chrome.dart';
 
 class MyMapPage extends StatefulWidget {
@@ -30,6 +31,21 @@ class _MyMapPageState extends State<MyMapPage> {
   String? _statusMessage;
   LatLng? _currentLatLng;
   StreamSubscription<Position>? _positionSub;
+
+  Future<void> _syncLocationToProfile(Position position) async {
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+      <String, Object?>{
+        'locationLat': position.latitude,
+        'locationLng': position.longitude,
+        'locationUpdatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
 
   @override
   void initState() {
@@ -138,6 +154,7 @@ class _MyMapPageState extends State<MyMapPage> {
       }
 
       final LatLng firstFix = LatLng(current.latitude, current.longitude);
+      await _syncLocationToProfile(current);
       setState(() {
         _currentLatLng = firstFix;
         _isLoading = false;
@@ -158,6 +175,7 @@ class _MyMapPageState extends State<MyMapPage> {
           _currentLatLng = next;
         });
         _mapController.move(next, _mapController.camera.zoom);
+        unawaited(_syncLocationToProfile(position));
       });
     } on TimeoutException {
       if (!mounted) {
@@ -325,6 +343,9 @@ class _MyMapPageState extends State<MyMapPage> {
                   const MyProfilePage(title: "Profile"),
             ),
           );
+        },
+        onEmergencyTap: () {
+          showEmergencyAlertDialog(context);
         },
       ),
       floatingActionButton: buildBlueLightFab(() {}),

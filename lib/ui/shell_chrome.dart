@@ -25,10 +25,12 @@ class BlueLightTopBar extends StatelessWidget implements PreferredSizeWidget {
     super.key,
     required this.title,
     required this.onProfileTap,
+    this.onEmergencyTap,
   });
 
   final String title;
   final VoidCallback onProfileTap;
+  final VoidCallback? onEmergencyTap;
 
   @override
   Size get preferredSize => const Size.fromHeight(84);
@@ -93,18 +95,59 @@ class BlueLightTopBar extends StatelessWidget implements PreferredSizeWidget {
         children: <Widget>[
           blueLightBrandMark(),
           const SizedBox(width: 11),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 24,
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.2,
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 21,
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
+              ),
             ),
           ),
         ],
       ),
       actions: <Widget>[
+        if (onEmergencyTap != null)
+          Padding(
+            padding: const EdgeInsets.only(right: 8, top: 2),
+            child: InkWell(
+              onTap: onEmergencyTap,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                height: 42,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF6A7A7).withOpacity(0.28),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white.withOpacity(0.35)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(
+                      Icons.emergency_share_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      'SOS',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.only(right: 14, top: 2),
             child: InkWell(
