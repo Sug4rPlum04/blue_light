@@ -414,6 +414,10 @@ class _MyProfilePageState extends State<MyProfilePage> {
                 ),
                 ElevatedButton(
                   onPressed: isSavingContacts ? null : saveContacts,
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(132, 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                  ),
                   child: isSavingContacts
                       ? const SizedBox(
                           width: 18,

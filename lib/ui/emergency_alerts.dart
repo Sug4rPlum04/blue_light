@@ -11,15 +11,8 @@ enum EmergencyAudience {
   both,
 }
 
-enum EmergencySituation {
-  feelingUnsafe,
-  beingTracked,
-  custom,
-}
-
 Future<void> showEmergencyAlertDialog(BuildContext context) async {
   EmergencyAudience? selectedAudience;
-  EmergencySituation? selectedSituation;
   final TextEditingController customSituationController =
       TextEditingController();
   bool includeEmergencyLevel = false;
@@ -49,7 +42,6 @@ Future<void> showEmergencyAlertDialog(BuildContext context) async {
             try {
               final int recipientCount = await _dispatchEmergencyAlert(
                 selectedAudience: selectedAudience!,
-                selectedSituation: selectedSituation,
                 customSituation: customSituationController.text.trim(),
                 emergencyLevel: includeEmergencyLevel
                     ? emergencyLevel.round()
@@ -137,72 +129,14 @@ Future<void> showEmergencyAlertDialog(BuildContext context) async {
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
-                  _situationTile(
-                    title: 'Feeling unsafe',
-                    value: EmergencySituation.feelingUnsafe,
-                    groupValue: selectedSituation,
-                    onChanged: (EmergencySituation? value) {
-                      setState(() {
-                        selectedSituation = value;
-                      });
-                    },
-                  ),
-                  _situationTile(
-                    title: 'Being tracked',
-                    value: EmergencySituation.beingTracked,
-                    groupValue: selectedSituation,
-                    onChanged: (EmergencySituation? value) {
-                      setState(() {
-                        selectedSituation = value;
-                      });
-                    },
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        selectedSituation = EmergencySituation.custom;
-                      });
-                    },
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Radio<EmergencySituation>(
-                          value: EmergencySituation.custom,
-                          groupValue: selectedSituation,
-                          onChanged: (EmergencySituation? value) {
-                            setState(() {
-                              selectedSituation = value;
-                            });
-                          },
-                        ),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: TextField(
-                              controller: customSituationController,
-                              maxLines: 2,
-                              decoration: InputDecoration(
-                                hintText: 'Type your own situation (optional)',
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              onTap: () {
-                                setState(() {
-                                  selectedSituation = EmergencySituation.custom;
-                                });
-                              },
-                              onChanged: (String value) {
-                                if (value.trim().isNotEmpty) {
-                                  setState(() {
-                                    selectedSituation = EmergencySituation.custom;
-                                  });
-                                }
-                              },
-                            ),
-                          ),
-                        ),
-                      ],
+                  TextField(
+                    controller: customSituationController,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      hintText: 'Describe the situation (optional)',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -304,25 +238,8 @@ Widget _audienceTile({
   );
 }
 
-Widget _situationTile({
-  required String title,
-  required EmergencySituation value,
-  required EmergencySituation? groupValue,
-  required ValueChanged<EmergencySituation?> onChanged,
-}) {
-  return RadioListTile<EmergencySituation>(
-    dense: true,
-    contentPadding: EdgeInsets.zero,
-    value: value,
-    groupValue: groupValue,
-    onChanged: onChanged,
-    title: Text(title),
-  );
-}
-
 Future<int> _dispatchEmergencyAlert({
   required EmergencyAudience selectedAudience,
-  EmergencySituation? selectedSituation,
   required String customSituation,
   required int? emergencyLevel,
 }) async {
@@ -378,12 +295,18 @@ Future<int> _dispatchEmergencyAlert({
       (senderData['username'] as String?)?.trim().isNotEmpty == true
           ? (senderData['username'] as String).trim()
           : 'A user';
+  final String senderPhotoUrl = (senderData['photoUrl'] as String?)?.trim() ?? '';
   final String senderEmail = currentUser.email ?? '';
   final String? situationLabel = _buildSituationLabel(
-    selectedSituation: selectedSituation,
     customSituation: customSituation,
   );
   final String audienceLabel = _audienceLabel(selectedAudience);
+  final String audienceDisplay = _audienceDisplayLabel(selectedAudience);
+  final String situationDisplay = (situationLabel ?? 'Not specified').trim();
+  final String urgentTitle = 'URGENT EMERGENCY ALERT FROM $senderName';
+  final String urgentMessage = situationLabel == null
+      ? '$senderName SENT AN EMERGENCY ALERT. TAP TO VIEW DETAILS.'
+      : '$senderName REPORTED: ${situationDisplay.toUpperCase()}. TAP TO VIEW DETAILS.';
 
   final WriteBatch batch = firestore.batch();
   for (final String recipientId in recipientIds) {
@@ -394,13 +317,17 @@ Future<int> _dispatchEmergencyAlert({
         .doc();
     batch.set(activityRef, <String, dynamic>{
       'type': 'emergency_alert',
-      'title': 'Emergency alert from $senderName',
-      'message': situationLabel == null
-          ? '$senderName sent an emergency alert.'
-          : '$senderName reported: $situationLabel',
+      'title': urgentTitle,
+      'message': urgentMessage,
       'audience': audienceLabel,
+      'audienceDisplay': audienceDisplay,
+      'situation': situationDisplay,
+      'hasEmergencyLevel': emergencyLevel != null,
       'fromUserId': currentUser.uid,
+      'fromUsername': senderName,
+      'fromPhotoUrl': senderPhotoUrl,
       'fromEmail': senderEmail,
+      'recipientCount': recipientIds.length,
       'createdAt': FieldValue.serverTimestamp(),
       if (emergencyLevel != null) 'emergencyLevel': emergencyLevel,
     });
@@ -487,18 +414,8 @@ Future<Set<String>> _fetchNearbyUserIds({
 }
 
 String? _buildSituationLabel({
-  required EmergencySituation? selectedSituation,
   required String customSituation,
 }) {
-  if (selectedSituation == null) {
-    return null;
-  }
-  if (selectedSituation == EmergencySituation.feelingUnsafe) {
-    return 'Feeling unsafe';
-  }
-  if (selectedSituation == EmergencySituation.beingTracked) {
-    return 'Being tracked';
-  }
   if (customSituation.trim().isNotEmpty) {
     return customSituation.trim();
   }
@@ -513,5 +430,16 @@ String _audienceLabel(EmergencyAudience audience) {
       return 'nearby_friends';
     case EmergencyAudience.both:
       return 'both';
+  }
+}
+
+String _audienceDisplayLabel(EmergencyAudience audience) {
+  switch (audience) {
+    case EmergencyAudience.personalFriends:
+      return 'Personal friends (trusted contacts)';
+    case EmergencyAudience.nearbyFriends:
+      return 'Friends within distance';
+    case EmergencyAudience.both:
+      return 'Both trusted contacts and nearby friends';
   }
 }

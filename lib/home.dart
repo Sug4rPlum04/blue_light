@@ -6,7 +6,9 @@ import 'package:blue_light/profile.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:blue_light/ui/emergency_alerts.dart';
+import 'package:blue_light/services/friend_service.dart';
 import 'package:blue_light/ui/shell_chrome.dart';
+import 'package:blue_light/ui/user_profile_preview.dart';
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
@@ -20,6 +22,8 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   final List<String> _fallbackActivityLogs =
       List.generate(5, (int i) => "Activity log ${i + 1}");
+  final FriendService _friendService = FriendService();
+  final Set<String> _suggestionBusyUserIds = <String>{};
 
   @override
   Widget build(BuildContext context) {
@@ -152,10 +156,24 @@ class _MyHomePageState extends State<MyHomePage> {
                         final QueryDocumentSnapshot<Map<String, dynamic>> doc =
                             docs[index];
                         final Map<String, dynamic> data = doc.data();
-                        final String text = (data['title'] as String?)?.trim().isNotEmpty == true
-                            ? data['title'] as String
-                            : (data['message'] as String?) ??
-                                'You have a new activity update.';
+                        final String type = (data['type'] as String?) ?? '';
+                        final String text =
+                            (data['title'] as String?)?.trim().isNotEmpty == true
+                                ? data['title'] as String
+                                : (data['message'] as String?) ??
+                                    'You have a new activity update.';
+                        final String? fromUserId = (data['fromUserId'] as String?)
+                            ?.trim()
+                            .isNotEmpty == true
+                            ? (data['fromUserId'] as String).trim()
+                            : null;
+                        final String fromUsername =
+                            (data['fromUsername'] as String?)?.trim().isNotEmpty ==
+                                    true
+                                ? (data['fromUsername'] as String).trim()
+                                : 'User';
+                        final String fromPhotoUrl =
+                            (data['fromPhotoUrl'] as String?)?.trim() ?? '';
                         return Dismissible(
                           key: ValueKey<String>(doc.id),
                           direction: DismissDirection.endToStart,
@@ -172,7 +190,95 @@ class _MyHomePageState extends State<MyHomePage> {
                           onDismissed: (_) {
                             doc.reference.delete();
                           },
-                          child: _activityTile(text),
+                          child: _activityTile(
+                            text,
+                            icon: type == 'friend_request'
+                                ? Icons.person_add_alt_1_rounded
+                                : type == 'emergency_alert'
+                                    ? Icons.warning_amber_rounded
+                                : type == 'friend_request_accepted'
+                                    ? Icons.verified_rounded
+                                    : Icons.notifications,
+                            iconColor: type == 'friend_request'
+                                ? const Color(0xFF0C8AE8)
+                                : type == 'emergency_alert'
+                                    ? const Color(0xFFD32F2F)
+                                : type == 'friend_request_accepted'
+                                    ? const Color(0xFF2E7D32)
+                                    : Colors.blue,
+                            leading: type == 'friend_request' &&
+                                    fromUserId != null
+                                ? GestureDetector(
+                                    onTap: () async {
+                                      try {
+                                        await showUserProfilePreviewDialog(
+                                          context: context,
+                                          targetUserId: fromUserId,
+                                          fallbackUsername: fromUsername,
+                                          fallbackPhotoUrl: fromPhotoUrl,
+                                        );
+                                      } catch (_) {}
+                                    },
+                                    child: _activityAvatar(fromPhotoUrl),
+                                  )
+                                : null,
+                            trailing: type == 'friend_request' &&
+                                    fromUserId != null
+                                ? SizedBox(
+                                    width: 84,
+                                    height: 32,
+                                    child: ElevatedButton(
+                                      onPressed: () async {
+                                        try {
+                                          await _friendService.acceptFriendRequest(
+                                            fromUserId: fromUserId,
+                                            activityDocIdToDelete: doc.id,
+                                          );
+                                        } catch (e) {
+                                          if (!mounted) {
+                                            return;
+                                          }
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                e.toString().replaceFirst(
+                                                  'Exception: ',
+                                                  '',
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF1E9CEB),
+                                        foregroundColor: Colors.white,
+                                        elevation: 0,
+                                        minimumSize: const Size(0, 0),
+                                        padding: EdgeInsets.zero,
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'Add',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : null,
+                            onTap: type == 'emergency_alert'
+                                ? () {
+                                    _showEmergencyAlertDetails(data);
+                                  }
+                                : null,
+                            isUrgent: type == 'emergency_alert',
+                          ),
                         );
                       },
                     );
@@ -210,27 +316,293 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  Widget _activityTile(String text) {
-    return Container(
+  Widget _activityTile(
+    String text, {
+    IconData icon = Icons.notifications,
+    Color iconColor = Colors.blue,
+    Widget? leading,
+    Widget? trailing,
+    VoidCallback? onTap,
+    bool isUrgent = false,
+  }) {
+    final Widget tileContent = Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.blue.shade50,
+        color: isUrgent ? const Color(0xFFFFECEC) : Colors.blue.shade50,
         borderRadius: BorderRadius.circular(15),
+        border: isUrgent
+            ? Border.all(color: const Color(0xFFFFC9C9))
+            : null,
       ),
       child: Row(
         children: <Widget>[
-          const Icon(Icons.notifications, color: Colors.blue),
+          leading ?? Icon(icon, color: iconColor),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 15),
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: isUrgent ? FontWeight.w700 : FontWeight.w400,
+                color: isUrgent ? const Color(0xFF921B1B) : null,
+              ),
             ),
           ),
+          if (trailing != null) ...<Widget>[
+            const SizedBox(width: 12),
+            trailing,
+          ],
+          if (isUrgent) ...<Widget>[
+            const SizedBox(width: 8),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: Color(0xFFD32F2F),
+            ),
+          ],
         ],
       ),
     );
+
+    if (onTap == null) {
+      return tileContent;
+    }
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(15),
+      child: tileContent,
+    );
+  }
+
+  Widget _activityAvatar(String photoUrl) {
+    return CircleAvatar(
+      radius: 14,
+      backgroundColor: const Color(0xFFE3EDF8),
+      backgroundImage: photoUrl.trim().isNotEmpty ? NetworkImage(photoUrl) : null,
+      child: photoUrl.trim().isNotEmpty
+          ? null
+          : const Icon(
+              Icons.person_rounded,
+              size: 16,
+              color: Color(0xFF0C8AE8),
+            ),
+    );
+  }
+
+  Future<void> _showEmergencyAlertDetails(Map<String, dynamic> data) async {
+    String fromUsername = (data['fromUsername'] as String?)?.trim() ?? '';
+    if (fromUsername.isEmpty) {
+      final String fromUserId = (data['fromUserId'] as String?)?.trim() ?? '';
+      if (fromUserId.isNotEmpty) {
+        try {
+          final DocumentSnapshot<Map<String, dynamic>> fromSnap =
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(fromUserId)
+                  .get();
+          final Map<String, dynamic> fromData =
+              fromSnap.data() ?? <String, dynamic>{};
+          fromUsername = (fromData['username'] as String?)?.trim() ?? '';
+        } catch (_) {}
+      }
+    }
+    if (fromUsername.isEmpty) {
+      fromUsername = 'Unknown user';
+    }
+    final String situation = (data['situation'] as String?)?.trim().isNotEmpty == true
+        ? (data['situation'] as String).trim()
+        : 'Not specified';
+    final String audienceRaw = (data['audienceDisplay'] as String?)?.trim().isNotEmpty ==
+            true
+        ? (data['audienceDisplay'] as String).trim()
+        : _humanAudience((data['audience'] as String?)?.trim() ?? '');
+    final String audience = audienceRaw.replaceAll(' (trusted contacts)', '');
+    final int? level = (data['emergencyLevel'] as num?)?.toInt();
+    final String timeAndDate = _formatActivityTime(data['createdAt']);
+
+    if (!mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: <Color>[Color(0xFFFFE8E8), Color(0xFFFFF4E5)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFFFC9C9)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+              child: Stack(
+                children: <Widget>[
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: <Color>[Color(0xFFE53935), Color(0xFFBF1D1D)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Row(
+                          children: <Widget>[
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              color: Colors.white,
+                              size: 26,
+                            ),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'ALERT DETAILS',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _detailRow('FROM', fromUsername),
+                      _detailRow('SENT TO', audience),
+                      _detailRow('TIME & DATE', timeAndDate),
+                      _detailRow('SITUATION', situation),
+                      _detailRow(
+                        'EMERGENCY LEVEL',
+                        level == null ? 'Not provided' : '$level / 5',
+                      ),
+                    ],
+                  ),
+                  Positioned(
+                    top: -6,
+                    right: -6,
+                    child: IconButton(
+                      onPressed: () {
+                        Navigator.of(dialogContext).pop();
+                      },
+                      icon: const Icon(Icons.close, color: Color(0xFFB71C1C)),
+                      splashRadius: 18,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _detailRow(
+    String label,
+    String value, {
+    String? secondaryLabel,
+    String? secondaryValue,
+  }) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFFDADA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFFB71C1C),
+              letterSpacing: 0.25,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF2D3A45),
+            ),
+          ),
+          if (secondaryLabel != null &&
+              secondaryLabel.trim().isNotEmpty &&
+              secondaryValue != null &&
+              secondaryValue.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              secondaryLabel,
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFFB71C1C),
+                letterSpacing: 0.25,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              secondaryValue,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF2D3A45),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _humanAudience(String rawAudience) {
+    switch (rawAudience) {
+      case 'personal_friends':
+        return 'Personal friends (trusted contacts)';
+      case 'nearby_friends':
+        return 'Friends within distance';
+      case 'both':
+        return 'Both trusted contacts and nearby friends';
+      default:
+        return 'Not specified';
+    }
+  }
+
+  String _formatActivityTime(dynamic createdAt) {
+    if (createdAt is Timestamp) {
+      final DateTime local = createdAt.toDate().toLocal();
+      final int hour12 = local.hour % 12 == 0 ? 12 : local.hour % 12;
+      final String minute = local.minute.toString().padLeft(2, '0');
+      final String meridiem = local.hour >= 12 ? 'PM' : 'AM';
+      final String month = local.month.toString().padLeft(2, '0');
+      final String day = local.day.toString().padLeft(2, '0');
+      final String year = local.year.toString();
+      return '$month/$day/$year at $hour12:$minute $meridiem';
+    }
+    return 'Not available';
   }
 
   // rounded rectangle "nearby friends" card (placeholder users)
@@ -329,8 +701,30 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // suggested friends card
   Widget _suggestedFriendsCard() {
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const SizedBox.shrink();
+    }
+
+    final Stream<DocumentSnapshot<Map<String, dynamic>>> meStream =
+        FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
+    final Stream<QuerySnapshot<Map<String, dynamic>>> incomingStream =
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('incoming_friend_requests')
+            .snapshots();
+    final Stream<QuerySnapshot<Map<String, dynamic>>> outgoingStream =
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('outgoing_friend_requests')
+            .snapshots();
+    final Stream<QuerySnapshot<Map<String, dynamic>>> usersStream =
+        FirebaseFirestore.instance.collection('users').snapshots();
+
     return Stack(
-      children: [
+      children: <Widget>[
         Container(
           margin: const EdgeInsets.only(top: 20),
           padding: const EdgeInsets.fromLTRB(20, 30, 20, 16),
@@ -345,23 +739,109 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ],
           ),
-          child: SizedBox(
-            height: 184,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: 8,
-              itemBuilder: (context, index) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 16),
-                  child: _suggestedFriendTile(
-                    name: "User",
-                    mutualsText: "Mutuals: Alex, Sam",
-                    photoUrl:
-                    "https://cdn-icons-png.freepik.com/512/5400/5400308.png",
-                  ),
-                );
-              },
-            ),
+          child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            stream: meStream,
+            builder: (
+              BuildContext context,
+              AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> meSnap,
+            ) {
+              final Set<String> myFriendIds =
+                  ((meSnap.data?.data()?['friendIds'] as List?) ?? <dynamic>[])
+                      .whereType<String>()
+                      .toSet();
+              final Set<String> dismissedSuggestionIds =
+                  ((meSnap.data?.data()?['dismissedSuggestionIds'] as List?) ??
+                          <dynamic>[])
+                      .whereType<String>()
+                      .toSet();
+
+              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: incomingStream,
+                builder: (
+                  BuildContext context,
+                  AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> incomingSnap,
+                ) {
+                  final Set<String> incomingIds = (incomingSnap.data?.docs ??
+                          <QueryDocumentSnapshot<Map<String, dynamic>>>[])
+                      .map((QueryDocumentSnapshot<Map<String, dynamic>> d) => d.id)
+                      .toSet();
+
+                  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: outgoingStream,
+                    builder: (
+                      BuildContext context,
+                      AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>>
+                          outgoingSnap,
+                    ) {
+                      final Set<String> outgoingIds = (outgoingSnap.data?.docs ??
+                              <QueryDocumentSnapshot<Map<String, dynamic>>>[])
+                          .map((QueryDocumentSnapshot<Map<String, dynamic>> d) {
+                        final Map<String, dynamic> data = d.data();
+                        return (data['toUserId'] as String?)?.trim() ?? d.id;
+                      }).where((String id) => id.isNotEmpty).toSet();
+
+                      return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: usersStream,
+                        builder: (
+                          BuildContext context,
+                          AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>>
+                              usersSnap,
+                        ) {
+                          if (usersSnap.connectionState == ConnectionState.waiting &&
+                              !usersSnap.hasData) {
+                            return const SizedBox(
+                              height: 92,
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
+
+                          final List<_SuggestedUserItem> suggestions =
+                              _buildSuggestedUsers(
+                            users: usersSnap.data?.docs ??
+                                <QueryDocumentSnapshot<Map<String, dynamic>>>[],
+                            currentUserId: user.uid,
+                            myFriendIds: myFriendIds,
+                            incomingIds: incomingIds,
+                            outgoingIds: outgoingIds,
+                            dismissedSuggestionIds: dismissedSuggestionIds,
+                          );
+
+                          if (suggestions.isEmpty) {
+                            return const SizedBox(
+                              height: 82,
+                              child: Center(
+                                child: Text('No suggested friends right now.'),
+                              ),
+                            );
+                          }
+
+                          return SizedBox(
+                            height: 188,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: suggestions.length > 10
+                                  ? 10
+                                  : suggestions.length,
+                              itemBuilder: (BuildContext context, int index) {
+                                final _SuggestedUserItem suggestion =
+                                    suggestions[index];
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 14),
+                                  child: _suggestedFriendTile(
+                                    currentUserId: user.uid,
+                                    suggestion: suggestion,
+                                  ),
+                                );
+                              },
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              );
+            },
           ),
         ),
 
@@ -387,76 +867,320 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // suggested tile (avatar, name, mutuals)
   Widget _suggestedFriendTile({
-    required String name,
-    required String mutualsText,
-    required String photoUrl,
+    required String currentUserId,
+    required _SuggestedUserItem suggestion,
   }) {
+    final bool isBusy = _suggestionBusyUserIds.contains(suggestion.uid);
     return Container(
-      width: 160,
-      padding: const EdgeInsets.all(12),
+      width: 156,
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
       decoration: BoxDecoration(
         color: Colors.blue.shade50,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundImage: NetworkImage(photoUrl),
-            backgroundColor: Colors.grey.shade200,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            mutualsText,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
-          ),
-
-          const SizedBox(height: 8),
-
-          SizedBox(
-            width: 104,
-            height: 30,
-            child: ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.lightBlue,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: EdgeInsets.zero,
-                minimumSize: const Size(0, 0),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+      child: Stack(
+        children: <Widget>[
+          Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: <Widget>[
+              GestureDetector(
+                onTap: () async {
+                  try {
+                    await showUserProfilePreviewDialog(
+                      context: context,
+                      targetUserId: suggestion.uid,
+                      fallbackUsername: suggestion.username,
+                      fallbackPhotoUrl: suggestion.photoUrl,
+                    );
+                  } catch (_) {}
+                },
+                child: CircleAvatar(
+                  radius: 28,
+                  backgroundImage: suggestion.photoUrl.isNotEmpty
+                      ? NetworkImage(suggestion.photoUrl)
+                      : null,
+                  backgroundColor: Colors.grey.shade200,
+                  child: suggestion.photoUrl.isNotEmpty
+                      ? null
+                      : const Icon(Icons.person, color: Colors.white),
                 ),
               ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  Icon(Icons.add, size: 14),
-                  SizedBox(width: 4),
-                  Text(
-                    "Add",
-                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
-                  ),
-                ],
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: Text(
+                  suggestion.username,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${suggestion.mutualCount} mutuals',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: 108,
+                height: 30,
+                child: suggestion.buttonState == _SuggestedButtonState.add
+                    ? ElevatedButton(
+                        onPressed: isBusy
+                            ? null
+                            : () async {
+                                await _runSuggestionAction(
+                                  suggestion.uid,
+                                  () => _friendService.sendFriendRequest(
+                                    toUserId: suggestion.uid,
+                                  ),
+                                );
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.lightBlue,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            Icon(Icons.add, size: 14),
+                            SizedBox(width: 4),
+                            Text(
+                              'Add',
+                              style: TextStyle(
+                                fontSize: 11.0,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : suggestion.buttonState == _SuggestedButtonState.received
+                        ? ElevatedButton(
+                            onPressed: isBusy
+                                ? null
+                                : () async {
+                                    await _runSuggestionAction(
+                                      suggestion.uid,
+                                      () => _friendService.acceptFriendRequest(
+                                        fromUserId: suggestion.uid,
+                                      ),
+                                    );
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.lightBlue,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(0, 0),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text(
+                              'Accept',
+                              style: TextStyle(
+                                fontSize: 11.0,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          )
+                        : OutlinedButton(
+                            onPressed: isBusy
+                                ? null
+                                : () async {
+                                    await _runSuggestionAction(
+                                      suggestion.uid,
+                                      () => _friendService.cancelFriendRequest(
+                                        toUserId: suggestion.uid,
+                                      ),
+                                    );
+                                  },
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFF1E9CEB)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text(
+                              'Requested',
+                              maxLines: 1,
+                              softWrap: false,
+                              style: TextStyle(
+                                fontSize: 10.4,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1E9CEB),
+                              ),
+                            ),
+                          ),
+              ),
+            ],
+          ),
+          Positioned(
+            top: 2,
+            right: 4,
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                splashRadius: 14,
+                onPressed: () async {
+                  await _dismissSuggestedUser(currentUserId, suggestion.uid);
+                },
+                icon: const Icon(
+                  Icons.close_rounded,
+                  size: 15,
+                  color: Color(0xFF4D5A67),
+                ),
               ),
             ),
-          )
+          ),
         ],
       ),
     );
   }
+
+  List<_SuggestedUserItem> _buildSuggestedUsers({
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> users,
+    required String currentUserId,
+    required Set<String> myFriendIds,
+    required Set<String> incomingIds,
+    required Set<String> outgoingIds,
+    required Set<String> dismissedSuggestionIds,
+  }) {
+    final List<_SuggestedUserItem> suggestions = <_SuggestedUserItem>[];
+
+    for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in users) {
+      final String uid = doc.id;
+      if (uid == currentUserId ||
+          myFriendIds.contains(uid) ||
+          dismissedSuggestionIds.contains(uid)) {
+        continue;
+      }
+
+      final Map<String, dynamic> data = doc.data();
+      final String username = (data['username'] as String?)?.trim().isNotEmpty == true
+          ? (data['username'] as String).trim()
+          : ((data['email'] as String?)?.split('@').first ?? 'User');
+      final String photoUrl = (data['photoUrl'] as String?)?.trim() ?? '';
+      final Set<String> otherFriendIds =
+          ((data['friendIds'] as List?) ?? <dynamic>[])
+              .whereType<String>()
+              .toSet();
+      final int mutualCount = otherFriendIds.intersection(myFriendIds).length;
+
+      final _SuggestedButtonState buttonState;
+      if (incomingIds.contains(uid)) {
+        buttonState = _SuggestedButtonState.received;
+      } else if (outgoingIds.contains(uid)) {
+        buttonState = _SuggestedButtonState.requested;
+      } else {
+        buttonState = _SuggestedButtonState.add;
+      }
+
+      suggestions.add(
+        _SuggestedUserItem(
+          uid: uid,
+          username: username,
+          photoUrl: photoUrl,
+          mutualCount: mutualCount,
+          buttonState: buttonState,
+        ),
+      );
+    }
+
+    suggestions.sort((_SuggestedUserItem a, _SuggestedUserItem b) {
+      final int byMutual = b.mutualCount.compareTo(a.mutualCount);
+      if (byMutual != 0) {
+        return byMutual;
+      }
+      return a.username.toLowerCase().compareTo(b.username.toLowerCase());
+    });
+
+    return suggestions;
+  }
+
+  Future<void> _dismissSuggestedUser(String currentUserId, String targetUserId) async {
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(currentUserId).set(
+        <String, dynamic>{
+          'dismissedSuggestionIds': FieldValue.arrayUnion(<String>[targetUserId]),
+        },
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  Future<void> _runSuggestionAction(
+    String userId,
+    Future<void> Function() action,
+  ) async {
+    if (_suggestionBusyUserIds.contains(userId)) {
+      return;
+    }
+    setState(() {
+      _suggestionBusyUserIds.add(userId);
+    });
+    try {
+      await action();
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _suggestionBusyUserIds.remove(userId);
+        });
+      }
+    }
+  }
+}
+
+enum _SuggestedButtonState {
+  add,
+  requested,
+  received,
+}
+
+class _SuggestedUserItem {
+  const _SuggestedUserItem({
+    required this.uid,
+    required this.username,
+    required this.photoUrl,
+    required this.mutualCount,
+    required this.buttonState,
+  });
+
+  final String uid;
+  final String username;
+  final String photoUrl;
+  final int mutualCount;
+  final _SuggestedButtonState buttonState;
 }
 
 Widget _navItem({

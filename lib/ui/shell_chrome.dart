@@ -40,6 +40,7 @@ class BlueLightTopBar extends StatelessWidget implements PreferredSizeWidget {
     return AppBar(
       toolbarHeight: 84,
       elevation: 0,
+      iconTheme: const IconThemeData(color: Colors.white),
       backgroundColor: Colors.transparent,
       flexibleSpace: Stack(
         children: <Widget>[
