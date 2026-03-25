@@ -191,160 +191,183 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
   ) {
     final Map<String, dynamic> data = requestDoc.data();
     final String fromUserId = requestDoc.id;
-    final String name = (data['fromUsername'] as String?)?.trim().isNotEmpty == true
-        ? (data['fromUsername'] as String).trim()
-        : 'User';
-    final String photo = (data['fromPhotoUrl'] as String?)?.trim() ?? '';
+    final String fallbackName =
+        (data['fromUsername'] as String?)?.trim().isNotEmpty == true
+            ? (data['fromUsername'] as String).trim()
+            : 'User';
+    final String fallbackPhoto = (data['fromPhotoUrl'] as String?)?.trim() ?? '';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 6,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: <Widget>[
-          GestureDetector(
-            onTap: () async {
-              try {
-                await showUserProfilePreviewDialog(
-                  context: context,
-                  targetUserId: fromUserId,
-                  fallbackUsername: name,
-                  fallbackPhotoUrl: photo,
-                );
-              } catch (_) {}
-            },
-            child: CircleAvatar(
-              radius: 26,
-              backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
-              backgroundColor: Colors.grey.shade200,
-              child: photo.isEmpty
-                  ? const Icon(Icons.person, color: Colors.white)
-                  : null,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: FutureBuilder<int>(
-              future: _mutualCountWith(fromUserId),
-              builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
-                final int mutualCount = snapshot.data ?? 0;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      name,
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$mutualCount mutuals',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-          const SizedBox(width: 8),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              SizedBox(
-                width: 90,
-                height: 34,
-                child: ElevatedButton(
-                  onPressed: _isUserBusy(fromUserId)
-                      ? null
-                      : () async {
-                    await _runFriendActionForUser(fromUserId, () {
-                      return _friendService.acceptFriendRequest(
-                        fromUserId: fromUserId,
-                      );
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.lightBlue,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: EdgeInsets.zero,
-                    minimumSize: const Size(0, 0),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      Icon(Icons.add, size: 14),
-                      SizedBox(width: 3),
-                      Text(
-                        'Add',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 94,
-                height: 34,
-                child: OutlinedButton(
-                  onPressed: _isUserBusy(fromUserId)
-                      ? null
-                      : () async {
-                    await _runFriendActionForUser(fromUserId, () {
-                      return _friendService.declineFriendRequest(
-                        fromUserId: fromUserId,
-                      );
-                    });
-                  },
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.grey),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  child: const Text(
-                    'Delete',
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.fade,
-                    style: TextStyle(
-                      color: Colors.black87,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(fromUserId)
+          .snapshots(),
+      builder: (
+        BuildContext context,
+        AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> userSnapshot,
+      ) {
+        final Map<String, dynamic> userData =
+            userSnapshot.data?.data() ?? <String, dynamic>{};
+        final String name =
+            (userData['username'] as String?)?.trim().isNotEmpty == true
+                ? (userData['username'] as String).trim()
+                : fallbackName;
+        final String photo =
+            (userData['photoUrl'] as String?)?.trim().isNotEmpty == true
+                ? (userData['photoUrl'] as String).trim()
+                : fallbackPhoto;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 6,
+                offset: Offset(0, 2),
               ),
             ],
           ),
-        ],
-      ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              GestureDetector(
+                onTap: () async {
+                  try {
+                    await showUserProfilePreviewDialog(
+                      context: context,
+                      targetUserId: fromUserId,
+                      fallbackUsername: name,
+                      fallbackPhotoUrl: photo,
+                    );
+                  } catch (_) {}
+                },
+                child: CircleAvatar(
+                  radius: 26,
+                  backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
+                  backgroundColor: Colors.grey.shade200,
+                  child: photo.isEmpty
+                      ? const Icon(Icons.person, color: Colors.white)
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FutureBuilder<int>(
+                  future: _mutualCountWith(fromUserId),
+                  builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
+                    final int mutualCount = snapshot.data ?? 0;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          name,
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '$mutualCount mutuals',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  SizedBox(
+                    width: 90,
+                    height: 34,
+                    child: ElevatedButton(
+                      onPressed: _isUserBusy(fromUserId)
+                          ? null
+                          : () async {
+                              await _runFriendActionForUser(fromUserId, () {
+                                return _friendService.acceptFriendRequest(
+                                  fromUserId: fromUserId,
+                                );
+                              });
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.lightBlue,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 0),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          Icon(Icons.add, size: 14),
+                          SizedBox(width: 3),
+                          Text(
+                            'Add',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 94,
+                    height: 34,
+                    child: OutlinedButton(
+                      onPressed: _isUserBusy(fromUserId)
+                          ? null
+                          : () async {
+                              await _runFriendActionForUser(fromUserId, () {
+                                return _friendService.declineFriendRequest(
+                                  fromUserId: fromUserId,
+                                );
+                              });
+                            },
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.grey),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'Delete',
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.fade,
+                        style: TextStyle(
+                          color: Colors.black87,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

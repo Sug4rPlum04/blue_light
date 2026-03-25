@@ -156,24 +156,6 @@ class _MyHomePageState extends State<MyHomePage> {
                         final QueryDocumentSnapshot<Map<String, dynamic>> doc =
                             docs[index];
                         final Map<String, dynamic> data = doc.data();
-                        final String type = (data['type'] as String?) ?? '';
-                        final String text =
-                            (data['title'] as String?)?.trim().isNotEmpty == true
-                                ? data['title'] as String
-                                : (data['message'] as String?) ??
-                                    'You have a new activity update.';
-                        final String? fromUserId = (data['fromUserId'] as String?)
-                            ?.trim()
-                            .isNotEmpty == true
-                            ? (data['fromUserId'] as String).trim()
-                            : null;
-                        final String fromUsername =
-                            (data['fromUsername'] as String?)?.trim().isNotEmpty ==
-                                    true
-                                ? (data['fromUsername'] as String).trim()
-                                : 'User';
-                        final String fromPhotoUrl =
-                            (data['fromPhotoUrl'] as String?)?.trim() ?? '';
                         return Dismissible(
                           key: ValueKey<String>(doc.id),
                           direction: DismissDirection.endToStart,
@@ -190,95 +172,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           onDismissed: (_) {
                             doc.reference.delete();
                           },
-                          child: _activityTile(
-                            text,
-                            icon: type == 'friend_request'
-                                ? Icons.person_add_alt_1_rounded
-                                : type == 'emergency_alert'
-                                    ? Icons.warning_amber_rounded
-                                : type == 'friend_request_accepted'
-                                    ? Icons.verified_rounded
-                                    : Icons.notifications,
-                            iconColor: type == 'friend_request'
-                                ? const Color(0xFF0C8AE8)
-                                : type == 'emergency_alert'
-                                    ? const Color(0xFFD32F2F)
-                                : type == 'friend_request_accepted'
-                                    ? const Color(0xFF2E7D32)
-                                    : Colors.blue,
-                            leading: type == 'friend_request' &&
-                                    fromUserId != null
-                                ? GestureDetector(
-                                    onTap: () async {
-                                      try {
-                                        await showUserProfilePreviewDialog(
-                                          context: context,
-                                          targetUserId: fromUserId,
-                                          fallbackUsername: fromUsername,
-                                          fallbackPhotoUrl: fromPhotoUrl,
-                                        );
-                                      } catch (_) {}
-                                    },
-                                    child: _activityAvatar(fromPhotoUrl),
-                                  )
-                                : null,
-                            trailing: type == 'friend_request' &&
-                                    fromUserId != null
-                                ? SizedBox(
-                                    width: 84,
-                                    height: 32,
-                                    child: ElevatedButton(
-                                      onPressed: () async {
-                                        try {
-                                          await _friendService.acceptFriendRequest(
-                                            fromUserId: fromUserId,
-                                            activityDocIdToDelete: doc.id,
-                                          );
-                                        } catch (e) {
-                                          if (!mounted) {
-                                            return;
-                                          }
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                e.toString().replaceFirst(
-                                                  'Exception: ',
-                                                  '',
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF1E9CEB),
-                                        foregroundColor: Colors.white,
-                                        elevation: 0,
-                                        minimumSize: const Size(0, 0),
-                                        padding: EdgeInsets.zero,
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(10),
-                                        ),
-                                      ),
-                                      child: const Text(
-                                        'Add',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                : null,
-                            onTap: type == 'emergency_alert'
-                                ? () {
-                                    _showEmergencyAlertDetails(data);
-                                  }
-                                : null,
-                            isUrgent: type == 'emergency_alert',
-                          ),
+                          child: _buildActivityContent(doc, data),
                         );
                       },
                     );
@@ -386,6 +280,139 @@ class _MyHomePageState extends State<MyHomePage> {
               size: 16,
               color: Color(0xFF0C8AE8),
             ),
+    );
+  }
+
+  Widget _buildActivityContent(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    Map<String, dynamic> data,
+  ) {
+    final String type = (data['type'] as String?) ?? '';
+    final String fallbackText = (data['title'] as String?)?.trim().isNotEmpty == true
+        ? data['title'] as String
+        : (data['message'] as String?) ?? 'You have a new activity update.';
+    final String? fromUserId = (data['fromUserId'] as String?)?.trim().isNotEmpty ==
+            true
+        ? (data['fromUserId'] as String).trim()
+        : null;
+
+    if (fromUserId == null ||
+        !(type == 'friend_request' ||
+            type == 'friend_request_accepted' ||
+            type == 'emergency_alert')) {
+      return _activityTile(
+        fallbackText,
+        icon: Icons.notifications,
+      );
+    }
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(fromUserId)
+          .snapshots(),
+      builder: (
+        BuildContext context,
+        AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> userSnapshot,
+      ) {
+        final Map<String, dynamic> userData =
+            userSnapshot.data?.data() ?? <String, dynamic>{};
+        final String liveName =
+            (userData['username'] as String?)?.trim().isNotEmpty == true
+                ? (userData['username'] as String).trim()
+                : ((data['fromUsername'] as String?)?.trim().isNotEmpty == true
+                    ? (data['fromUsername'] as String).trim()
+                    : 'User');
+        final String livePhoto =
+            (userData['photoUrl'] as String?)?.trim().isNotEmpty == true
+                ? (userData['photoUrl'] as String).trim()
+                : ((data['fromPhotoUrl'] as String?)?.trim() ?? '');
+
+        final String text = type == 'friend_request'
+            ? '$liveName has sent you a friend request.'
+            : type == 'friend_request_accepted'
+                ? '$liveName has accepted your friend request.'
+                : (data['situation'] as String?)?.trim().isNotEmpty == true
+                    ? '$liveName REPORTED: ${((data['situation'] as String).trim()).toUpperCase()}. TAP TO VIEW DETAILS.'
+                    : '$liveName SENT AN EMERGENCY ALERT. TAP TO VIEW DETAILS.';
+
+        return _activityTile(
+          text,
+          icon: type == 'friend_request'
+              ? Icons.person_add_alt_1_rounded
+              : type == 'emergency_alert'
+                  ? Icons.warning_amber_rounded
+                  : Icons.verified_rounded,
+          iconColor: type == 'friend_request'
+              ? const Color(0xFF0C8AE8)
+              : type == 'emergency_alert'
+                  ? const Color(0xFFD32F2F)
+                  : const Color(0xFF2E7D32),
+          leading: type == 'friend_request'
+              ? GestureDetector(
+                  onTap: () async {
+                    try {
+                      await showUserProfilePreviewDialog(
+                        context: context,
+                        targetUserId: fromUserId,
+                        fallbackUsername: liveName,
+                        fallbackPhotoUrl: livePhoto,
+                      );
+                    } catch (_) {}
+                  },
+                  child: _activityAvatar(livePhoto),
+                )
+              : null,
+          trailing: type == 'friend_request'
+              ? SizedBox(
+                  width: 84,
+                  height: 32,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      try {
+                        await _friendService.acceptFriendRequest(
+                          fromUserId: fromUserId,
+                          activityDocIdToDelete: doc.id,
+                        );
+                      } catch (e) {
+                        if (!mounted) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              e.toString().replaceFirst('Exception: ', ''),
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E9CEB),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      minimumSize: const Size(0, 0),
+                      padding: EdgeInsets.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text(
+                      'Add',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                )
+              : null,
+          onTap: type == 'emergency_alert'
+              ? () {
+                  _showEmergencyAlertDetails(data);
+                }
+              : null,
+          isUrgent: type == 'emergency_alert',
+        );
+      },
     );
   }
 
