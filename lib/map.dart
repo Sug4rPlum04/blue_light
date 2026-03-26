@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:blue_light/ui/emergency_alerts.dart';
@@ -31,6 +32,7 @@ class _MyMapPageState extends State<MyMapPage> {
   String? _statusMessage;
   LatLng? _currentLatLng;
   StreamSubscription<Position>? _positionSub;
+  String? get _currentUserId => FirebaseAuth.instance.currentUser?.uid;
 
   Future<void> _syncLocationToProfile(Position position) async {
     final User? user = FirebaseAuth.instance.currentUser;
@@ -283,49 +285,208 @@ class _MyMapPageState extends State<MyMapPage> {
       return _buildLocationErrorView();
     }
 
-    return FlutterMap(
-      mapController: _mapController,
-      options: MapOptions(
-        initialCenter: _currentLatLng!,
-        initialZoom: 16,
+    final String? userId = _currentUserId;
+    if (userId == null) {
+      return _buildLocationErrorView();
+    }
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
+      builder: (
+        BuildContext context,
+        AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> meSnapshot,
+      ) {
+        final Set<String> friendIds =
+            ((meSnapshot.data?.data()?['friendIds'] as List?) ?? <dynamic>[])
+                .whereType<String>()
+                .toSet();
+
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance.collection('users').snapshots(),
+          builder: (
+            BuildContext context,
+            AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> usersSnapshot,
+          ) {
+            final List<Marker> clusterMarkers = <Marker>[
+              _selfMarker(_currentLatLng!),
+            ];
+
+            final Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> userDocs =
+                usersSnapshot.data?.docs ??
+                    <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+
+            for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in userDocs) {
+              if (!friendIds.contains(doc.id)) {
+                continue;
+              }
+              final Map<String, dynamic> data = doc.data();
+              final bool trackingOn =
+                  (data['locationTrackingEnabled'] as bool?) ?? true;
+              if (!trackingOn) {
+                continue;
+              }
+              final num? lat = data['locationLat'] as num?;
+              final num? lng = data['locationLng'] as num?;
+              if (lat == null || lng == null) {
+                continue;
+              }
+
+              final String username =
+                  (data['username'] as String?)?.trim().isNotEmpty == true
+                      ? (data['username'] as String).trim()
+                      : ((data['email'] as String?)?.split('@').first ?? 'Friend');
+              final String photoUrl = (data['photoUrl'] as String?)?.trim() ?? '';
+
+              clusterMarkers.add(
+                _friendMarker(
+                  point: LatLng(lat.toDouble(), lng.toDouble()),
+                  username: username,
+                  photoUrl: photoUrl,
+                ),
+              );
+            }
+
+            return FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: _currentLatLng!,
+                initialZoom: 16,
+              ),
+              children: <Widget>[
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.blue_light',
+                ),
+                MarkerClusterLayerWidget(
+                  options: MarkerClusterLayerOptions(
+                    markers: clusterMarkers,
+                    maxClusterRadius: 55,
+                    size: const Size(54, 54),
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.all(44),
+                    maxZoom: 17,
+                    spiderfyCircleRadius: 42,
+                    spiderfySpiralDistanceMultiplier: 2,
+                    builder: (
+                      BuildContext context,
+                      List<Marker> clusterMarkers,
+                    ) {
+                      return Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            colors: <Color>[
+                              Color(0xFF31B2FF),
+                              Color(0xFF1578D0),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          border: Border.all(
+                            color: Colors.white,
+                            width: 2.5,
+                          ),
+                          boxShadow: const <BoxShadow>[
+                            BoxShadow(
+                              color: Color(0x402177C2),
+                              blurRadius: 12,
+                              offset: Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${clusterMarkers.length}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Marker _selfMarker(LatLng point) {
+    return Marker(
+      point: point,
+      width: 70,
+      height: 82,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: Colors.lightBlue,
+            child: const Icon(Icons.person_pin_circle, color: Colors.white),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.black87,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Text(
+              'You',
+              style: TextStyle(color: Colors.white, fontSize: 10.5),
+            ),
+          ),
+        ],
       ),
-      children: <Widget>[
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.example.blue_light',
-        ),
-        MarkerLayer(
-          markers: <Marker>[
-            Marker(
-              point: _currentLatLng!,
-              width: 70,
-              height: 82,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: Colors.lightBlue,
-                    child: const Icon(Icons.person_pin_circle, color: Colors.white),
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text(
-                      'You',
-                      style: TextStyle(color: Colors.white, fontSize: 10.5),
-                    ),
-                  ),
-                ],
+    );
+  }
+
+  Marker _friendMarker({
+    required LatLng point,
+    required String username,
+    required String photoUrl,
+  }) {
+    return Marker(
+      point: point,
+      width: 96,
+      height: 92,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: Colors.white,
+            backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+            child: photoUrl.isNotEmpty
+                ? null
+                : const Icon(Icons.person_rounded, color: Color(0xFF0F7DCF)),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            constraints: const BoxConstraints(maxWidth: 90),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xEE1A76C7),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              username,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
               ),
             ),
-          ],
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 

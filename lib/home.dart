@@ -5,6 +5,8 @@ import 'package:blue_light/map.dart';
 import 'package:blue_light/profile.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:blue_light/ui/emergency_alerts.dart';
 import 'package:blue_light/services/friend_service.dart';
 import 'package:blue_light/ui/shell_chrome.dart';
@@ -333,8 +335,8 @@ class _MyHomePageState extends State<MyHomePage> {
             : type == 'friend_request_accepted'
                 ? '$liveName has accepted your friend request.'
                 : (data['situation'] as String?)?.trim().isNotEmpty == true
-                    ? '$liveName REPORTED: ${((data['situation'] as String).trim()).toUpperCase()}. TAP TO VIEW DETAILS.'
-                    : '$liveName SENT AN EMERGENCY ALERT. TAP TO VIEW DETAILS.';
+                    ? '$liveName SOS: ${((data['situation'] as String).trim()).toUpperCase()}.'
+                    : '$liveName sent an SOS alert.';
 
         return _activityTile(
           text,
@@ -378,12 +380,9 @@ class _MyHomePageState extends State<MyHomePage> {
                         if (!mounted) {
                           return;
                         }
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              e.toString().replaceFirst('Exception: ', ''),
-                            ),
-                          ),
+                        showBlueLightToast(
+                          context,
+                          e.toString().replaceFirst('Exception: ', ''),
                         );
                       }
                     },
@@ -417,9 +416,10 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _showEmergencyAlertDetails(Map<String, dynamic> data) async {
+    final String fromUserId = (data['fromUserId'] as String?)?.trim() ?? '';
     String fromUsername = (data['fromUsername'] as String?)?.trim() ?? '';
+    String fromPhotoUrl = (data['fromPhotoUrl'] as String?)?.trim() ?? '';
     if (fromUsername.isEmpty) {
-      final String fromUserId = (data['fromUserId'] as String?)?.trim() ?? '';
       if (fromUserId.isNotEmpty) {
         try {
           final DocumentSnapshot<Map<String, dynamic>> fromSnap =
@@ -430,6 +430,9 @@ class _MyHomePageState extends State<MyHomePage> {
           final Map<String, dynamic> fromData =
               fromSnap.data() ?? <String, dynamic>{};
           fromUsername = (fromData['username'] as String?)?.trim() ?? '';
+          if (fromPhotoUrl.isEmpty) {
+            fromPhotoUrl = (fromData['photoUrl'] as String?)?.trim() ?? '';
+          }
         } catch (_) {}
       }
     }
@@ -444,6 +447,10 @@ class _MyHomePageState extends State<MyHomePage> {
         ? (data['audienceDisplay'] as String).trim()
         : _humanAudience((data['audience'] as String?)?.trim() ?? '');
     final String audience = audienceRaw.replaceAll(' (trusted contacts)', '');
+    final String location = _formatAlertLocation(data);
+    final double? alertLat = (data['fromLocationLat'] as num?)?.toDouble();
+    final double? alertLng = (data['fromLocationLng'] as num?)?.toDouble();
+    final bool hasAlertLocation = alertLat != null && alertLng != null;
     final int? level = (data['emergencyLevel'] as num?)?.toInt();
     final String timeAndDate = _formatActivityTime(data['createdAt']);
 
@@ -514,9 +521,121 @@ class _MyHomePageState extends State<MyHomePage> {
                       _detailRow('SENT TO', audience),
                       _detailRow('TIME & DATE', timeAndDate),
                       _detailRow('SITUATION', situation),
+                      _detailRow('LOCATION', location),
                       _detailRow(
                         'EMERGENCY LEVEL',
                         level == null ? 'Not provided' : '$level / 5',
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: SizedBox(
+                              height: 44,
+                              child: ElevatedButton(
+                                onPressed: fromUserId.isNotEmpty
+                                    ? () {
+                                        Navigator.of(dialogContext).pop();
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute<ChatThreadPage>(
+                                            builder: (BuildContext context) =>
+                                                ChatThreadPage(
+                                              peerUserId: fromUserId,
+                                              peerUsername: fromUsername,
+                                              peerPhotoUrl: fromPhotoUrl,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1E9CEB),
+                                  disabledBackgroundColor:
+                                      const Color(0xFF9FB7CC),
+                                  foregroundColor: Colors.white,
+                                  disabledForegroundColor: Colors.white70,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: <Widget>[
+                                    Icon(Icons.mark_unread_chat_alt_rounded, size: 18),
+                                    SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        'Message',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        softWrap: false,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13.5,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: SizedBox(
+                              height: 44,
+                              child: ElevatedButton(
+                                onPressed: hasAlertLocation
+                                    ? () async {
+                                        Navigator.of(dialogContext).pop();
+                                        await _openRouteToAlertLocation(
+                                          latitude: alertLat,
+                                          longitude: alertLng,
+                                        );
+                                      }
+                                    : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF176EC2),
+                                  disabledBackgroundColor:
+                                      const Color(0xFF9FB7CC),
+                                  foregroundColor: Colors.white,
+                                  disabledForegroundColor: Colors.white70,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: <Widget>[
+                                    Icon(Icons.route_rounded, size: 18),
+                                    SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        'Get Location',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        softWrap: false,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -632,17 +751,89 @@ class _MyHomePageState extends State<MyHomePage> {
     return 'Not available';
   }
 
-  // rounded rectangle "nearby friends" card (placeholder users)
+  String _formatAlertLocation(Map<String, dynamic> data) {
+    final num? lat = data['fromLocationLat'] as num?;
+    final num? lng = data['fromLocationLng'] as num?;
+    if (lat == null || lng == null) {
+      return 'Not available';
+    }
+    final double latValue = lat.toDouble();
+    final double lngValue = lng.toDouble();
+    final String latText =
+        '${latValue.abs().toStringAsFixed(5)}${latValue >= 0 ? 'N' : 'S'}';
+    final String lngText =
+        '${lngValue.abs().toStringAsFixed(5)}${lngValue >= 0 ? 'E' : 'W'}';
+    return '$latText, $lngText';
+  }
+
+  Future<void> _openRouteToAlertLocation({
+    required double? latitude,
+    required double? longitude,
+  }) async {
+    if (latitude == null || longitude == null) {
+      if (!mounted) return;
+      showBlueLightToast(context, 'Alert location is not available.');
+      return;
+    }
+    final String latLng = '${latitude.toStringAsFixed(6)},${longitude.toStringAsFixed(6)}';
+    final List<Uri> navigationUris = <Uri>[
+      Uri.parse('google.navigation:q=$latLng&mode=d'),
+      Uri.parse('geo:$latLng?q=$latLng'),
+      Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=$latLng&travelmode=driving',
+      ),
+    ];
+
+    try {
+      for (final Uri uri in navigationUris) {
+        final bool canLaunch = await canLaunchUrl(uri);
+        if (!canLaunch) {
+          continue;
+        }
+        final bool launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        if (launched) {
+          return;
+        }
+      }
+      if (!mounted) return;
+      showBlueLightToast(
+        context,
+        'No map app/browser available to open directions.',
+      );
+    } catch (_) {
+      if (!mounted) return;
+      showBlueLightToast(
+        context,
+        'Could not open navigation right now.',
+      );
+    }
+  }
+
+  // rounded rectangle nearby friends card
   Widget _nearbyFriendsCard() {
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const SizedBox.shrink();
+    }
+
+    final Stream<DocumentSnapshot<Map<String, dynamic>>> meStream =
+        FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
+    final Stream<QuerySnapshot<Map<String, dynamic>>> usersStream =
+        FirebaseFirestore.instance.collection('users').snapshots();
+
     return Stack(
-      children: [
+      children: <Widget>[
         Container(
           margin: const EdgeInsets.only(top: 20),
           padding: const EdgeInsets.fromLTRB(20, 30, 20, 16),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            boxShadow: const [
+            border: Border.all(color: const Color(0xFFDCEBFA)),
+            boxShadow: const <BoxShadow>[
               BoxShadow(
                 color: Colors.black12,
                 blurRadius: 10,
@@ -651,24 +842,90 @@ class _MyHomePageState extends State<MyHomePage> {
             ],
           ),
 
-          // horizontal scroll
-          child: SizedBox(
-            height: 140,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: 8,
-              itemBuilder: (context, index) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 16),
-                  child: _friendTile(
-                    name: "User",
-                    milesText: "-- mi",
-                    photoUrl:
-                      "https://cdn-icons-png.freepik.com/512/5400/5400308.png",
-                  ),
-                );
-              },
-            ),
+          child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            stream: meStream,
+            builder: (
+              BuildContext context,
+              AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> meSnap,
+            ) {
+              final Map<String, dynamic> myData =
+                  meSnap.data?.data() ?? <String, dynamic>{};
+              final Set<String> myFriendIds =
+                  ((myData['friendIds'] as List?) ?? <dynamic>[])
+                      .whereType<String>()
+                      .toSet();
+              final double radiusMiles =
+                  (myData['nearbyAlertRadiusMiles'] as num?)?.toDouble() ?? 5.0;
+              final num? myLat = myData['locationLat'] as num?;
+              final num? myLng = myData['locationLng'] as num?;
+
+              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: usersStream,
+                builder: (
+                  BuildContext context,
+                  AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> usersSnap,
+                ) {
+                  if (usersSnap.connectionState == ConnectionState.waiting &&
+                      !usersSnap.hasData) {
+                    return const SizedBox(
+                      height: 92,
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+
+                  final List<_NearbyFriendItem> nearby = _buildNearbyFriends(
+                    users: usersSnap.data?.docs ??
+                        <QueryDocumentSnapshot<Map<String, dynamic>>>[],
+                    myFriendIds: myFriendIds,
+                    myLat: myLat?.toDouble(),
+                    myLng: myLng?.toDouble(),
+                    radiusMiles: radiusMiles,
+                  );
+
+                  if (nearby.isEmpty) {
+                    return SizedBox(
+                      height: 82,
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                              Icons.location_searching_rounded,
+                              size: 20,
+                              color: Colors.blueGrey.shade300,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'No friends nearby right now.',
+                              style: TextStyle(color: Colors.grey.shade700),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  return SizedBox(
+                    height: 140,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: nearby.length > 7 ? 7 : nearby.length,
+                      itemBuilder: (BuildContext context, int index) {
+                        final _NearbyFriendItem friend = nearby[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 16),
+                          child: _friendTile(
+                            name: friend.name,
+                            milesText: '${friend.distanceMiles.toStringAsFixed(1)} mi',
+                            photoUrl: friend.photoUrl,
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              );
+            },
           ),
         ),
 
@@ -688,7 +945,7 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
           ),
-        )
+        ),
       ],
     );
   }
@@ -699,27 +956,67 @@ class _MyHomePageState extends State<MyHomePage> {
     required String milesText,
     required String photoUrl,
   }) {
-    return SizedBox(
-      width: 90,
+    return Container(
+      width: 112,
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: <Color>[Color(0xFFF5FAFF), Color(0xFFEAF4FF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: const Color(0xFFD8EAFB)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x142E77BE),
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundImage: NetworkImage(photoUrl),
-            backgroundColor: Colors.grey.shade200,
+        children: <Widget>[
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFFD6EAFE),
+            ),
+            child: CircleAvatar(
+              radius: 25,
+              backgroundImage: photoUrl.trim().isNotEmpty
+                  ? NetworkImage(photoUrl)
+                  : null,
+              backgroundColor: Colors.grey.shade200,
+              child: photoUrl.trim().isNotEmpty
+                  ? null
+                  : const Icon(Icons.person_rounded, color: Colors.white),
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 9),
           Text(
             name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w600),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13.5,
+            ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Text(
             milesText,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.blueGrey.shade600,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
@@ -1081,6 +1378,67 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
+  List<_NearbyFriendItem> _buildNearbyFriends({
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> users,
+    required Set<String> myFriendIds,
+    required double? myLat,
+    required double? myLng,
+    required double radiusMiles,
+  }) {
+    if (myFriendIds.isEmpty || myLat == null || myLng == null) {
+      return <_NearbyFriendItem>[];
+    }
+
+    final List<_NearbyFriendItem> nearby = <_NearbyFriendItem>[];
+    for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in users) {
+      if (!myFriendIds.contains(doc.id)) {
+        continue;
+      }
+      final Map<String, dynamic> data = doc.data();
+      final bool trackingEnabled =
+          (data['locationTrackingEnabled'] as bool?) ?? true;
+      if (!trackingEnabled) {
+        continue;
+      }
+      final num? lat = data['locationLat'] as num?;
+      final num? lng = data['locationLng'] as num?;
+      if (lat == null || lng == null) {
+        continue;
+      }
+
+      final double meters = Geolocator.distanceBetween(
+        myLat,
+        myLng,
+        lat.toDouble(),
+        lng.toDouble(),
+      );
+      final double miles = meters / 1609.344;
+      if (miles > radiusMiles) {
+        continue;
+      }
+
+      final String name = (data['username'] as String?)?.trim().isNotEmpty == true
+          ? (data['username'] as String).trim()
+          : ((data['email'] as String?)?.split('@').first ?? 'User');
+      final String photoUrl = (data['photoUrl'] as String?)?.trim() ?? '';
+
+      nearby.add(
+        _NearbyFriendItem(
+          uid: doc.id,
+          name: name,
+          photoUrl: photoUrl,
+          distanceMiles: miles,
+        ),
+      );
+    }
+
+    nearby.sort(
+      (_NearbyFriendItem a, _NearbyFriendItem b) =>
+          a.distanceMiles.compareTo(b.distanceMiles),
+    );
+    return nearby;
+  }
+
   List<_SuggestedUserItem> _buildSuggestedUsers({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> users,
     required String currentUserId,
@@ -1153,9 +1511,7 @@ class _MyHomePageState extends State<MyHomePage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-      );
+      showBlueLightToast(context, e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -1175,9 +1531,7 @@ class _MyHomePageState extends State<MyHomePage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-      );
+      showBlueLightToast(context, e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) {
         setState(() {
@@ -1192,6 +1546,20 @@ enum _SuggestedButtonState {
   add,
   requested,
   received,
+}
+
+class _NearbyFriendItem {
+  const _NearbyFriendItem({
+    required this.uid,
+    required this.name,
+    required this.photoUrl,
+    required this.distanceMiles,
+  });
+
+  final String uid;
+  final String name;
+  final String photoUrl;
+  final double distanceMiles;
 }
 
 class _SuggestedUserItem {

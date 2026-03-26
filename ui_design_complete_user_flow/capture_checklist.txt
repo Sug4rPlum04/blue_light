@@ -1,0 +1,12 @@
+﻿[ ] Sign in screen
+[ ] Create account screen
+[ ] Home screen
+[ ] Discover screen
+[ ] Friends screen
+[ ] Map screen
+[ ] Messages list
+[ ] Chat thread
+[ ] Profile settings
+[ ] SOS popup
+[ ] Alert details popup
+[ ] Combined final collage image

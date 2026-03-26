@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:blue_light/ui/shell_chrome.dart';
 
 enum EmergencyAudience {
   personalFriends,
@@ -52,12 +53,9 @@ Future<void> showEmergencyAlertDialog(BuildContext context) async {
                 return;
               }
               Navigator.of(dialogContext).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Emergency alert sent to $recipientCount people.',
-                  ),
-                ),
+              showBlueLightToast(
+                context,
+                'Emergency alert sent to $recipientCount people.',
               );
             } catch (e) {
               setState(() {
@@ -254,6 +252,20 @@ Future<int> _dispatchEmergencyAlert({
       .doc(currentUser.uid)
       .get();
   final Map<String, dynamic> senderData = senderSnapshot.data() ?? <String, dynamic>{};
+  final Set<String> senderFriendIds =
+      ((senderData['friendIds'] as List?) ?? <dynamic>[])
+          .whereType<String>()
+          .toSet();
+  Position? alertPosition;
+  try {
+    final LocationPermission permission = await Geolocator.checkPermission();
+    if (permission != LocationPermission.deniedForever) {
+      alertPosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 8),
+      );
+    }
+  } catch (_) {}
 
   final Set<String> recipientIds = <String>{};
   final double nearbyMiles =
@@ -281,6 +293,7 @@ Future<int> _dispatchEmergencyAlert({
       originLat: currentPosition.latitude,
       originLng: currentPosition.longitude,
       radiusMiles: nearbyMiles,
+      allowedUserIds: senderFriendIds,
     );
     recipientIds.addAll(nearbyIds);
   }
@@ -297,6 +310,10 @@ Future<int> _dispatchEmergencyAlert({
           : 'A user';
   final String senderPhotoUrl = (senderData['photoUrl'] as String?)?.trim() ?? '';
   final String senderEmail = currentUser.email ?? '';
+  final double? locationLat = alertPosition?.latitude ??
+      (senderData['locationLat'] as num?)?.toDouble();
+  final double? locationLng = alertPosition?.longitude ??
+      (senderData['locationLng'] as num?)?.toDouble();
   final String? situationLabel = _buildSituationLabel(
     customSituation: customSituation,
   );
@@ -329,6 +346,8 @@ Future<int> _dispatchEmergencyAlert({
       'fromEmail': senderEmail,
       'recipientCount': recipientIds.length,
       'createdAt': FieldValue.serverTimestamp(),
+      if (locationLat != null) 'fromLocationLat': locationLat,
+      if (locationLng != null) 'fromLocationLng': locationLng,
       if (emergencyLevel != null) 'emergencyLevel': emergencyLevel,
     });
   }
@@ -384,7 +403,11 @@ Future<Set<String>> _fetchNearbyUserIds({
   required double originLat,
   required double originLng,
   required double radiusMiles,
+  required Set<String> allowedUserIds,
 }) async {
+  if (allowedUserIds.isEmpty) {
+    return <String>{};
+  }
   final FirebaseFirestore firestore = FirebaseFirestore.instance;
   final QuerySnapshot<Map<String, dynamic>> snapshot = await firestore
       .collection('users')
@@ -393,6 +416,9 @@ Future<Set<String>> _fetchNearbyUserIds({
 
   final Set<String> ids = <String>{};
   for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in snapshot.docs) {
+    if (!allowedUserIds.contains(doc.id)) {
+      continue;
+    }
     final Map<String, dynamic> data = doc.data();
     final num? lat = data['locationLat'] as num?;
     final num? lng = data['locationLng'] as num?;

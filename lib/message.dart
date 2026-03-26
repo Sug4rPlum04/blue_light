@@ -628,18 +628,33 @@ class _MyMessagePageState extends State<MyMessagePage> {
   Future<void> _deleteConversation(String peerId) async {
     final User? user = _user;
     if (user == null) return;
-    final DocumentReference<Map<String, dynamic>> ref = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('conversations')
-        .doc(peerId);
-    final QuerySnapshot<Map<String, dynamic>> msgs = await ref.collection('messages').get();
-    final WriteBatch batch = FirebaseFirestore.instance.batch();
-    for (final QueryDocumentSnapshot<Map<String, dynamic>> m in msgs.docs) {
-      batch.delete(m.reference);
+    try {
+      final DocumentReference<Map<String, dynamic>> ref = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('conversations')
+          .doc(peerId);
+      final QuerySnapshot<Map<String, dynamic>> msgs =
+          await ref.collection('messages').get();
+      final WriteBatch batch = FirebaseFirestore.instance.batch();
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> m in msgs.docs) {
+        batch.delete(m.reference);
+      }
+      batch.delete(ref);
+      await batch.commit();
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      final String message = (e.message ?? '').trim().isNotEmpty
+          ? e.message!.trim()
+          : 'Could not delete chat right now. Check your connection and try again.';
+      showBlueLightToast(context, message);
+    } catch (_) {
+      if (!mounted) return;
+      showBlueLightToast(
+        context,
+        'Could not delete chat right now. Check your connection and try again.',
+      );
     }
-    batch.delete(ref);
-    await batch.commit();
   }
 
   _UserDisplay _resolveUserDisplay({

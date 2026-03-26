@@ -827,9 +827,7 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-      );
+      showBlueLightToast(context, e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) {
         setState(() {

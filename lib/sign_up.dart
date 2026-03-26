@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:blue_light/ui/shell_chrome.dart';
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
@@ -83,9 +84,7 @@ class _SignUpPageState extends State<SignUpPage> {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Account created successfully.')),
-      );
+      showBlueLightToast(context, 'Account created successfully.');
       Navigator.pop(context);
     } on FirebaseAuthException catch (e) {
       setState(() {

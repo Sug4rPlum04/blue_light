@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:blue_light/ui/emergency_alerts.dart';
 import 'package:blue_light/ui/shell_chrome.dart';
@@ -130,9 +131,7 @@ class _MyProfilePageState extends State<MyProfilePage> {
 
     final String username = _usernameController.text.trim();
     if (username.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Username cannot be empty.')),
-      );
+      showBlueLightToast(context, 'Username cannot be empty.');
       return;
     }
 
@@ -168,9 +167,7 @@ class _MyProfilePageState extends State<MyProfilePage> {
       _isSaving = false;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Profile updated.')),
-    );
+    showBlueLightToast(context, 'Profile updated.');
   }
 
   Future<void> _setLocationTrackingEnabled(bool enabled) async {
@@ -188,6 +185,46 @@ class _MyProfilePageState extends State<MyProfilePage> {
         'locationTrackingEnabled': enabled,
       },
       SetOptions(merge: true),
+    );
+  }
+
+  Future<void> _openBackgroundLocationGuide() async {
+    final LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.always) {
+      if (!mounted) return;
+      showBlueLightToast(context, 'Background location is already enabled.');
+      return;
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            'Enable Always-On Location',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          content: const Text(
+            'Android now shows "Allow all the time" in system settings.\n\n'
+            'Tap Open Settings, then go to:\n'
+            'Permissions -> Location -> Allow all the time.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                Geolocator.openAppSettings();
+              },
+              child: const Text('Open Settings'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -795,6 +832,18 @@ class _MyProfilePageState extends State<MyProfilePage> {
                                       activeColor: Colors.lightBlue,
                                     ),
                                   ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton.icon(
+                                  onPressed: _openBackgroundLocationGuide,
+                                  icon: const Icon(Icons.settings_rounded, size: 18),
+                                  label: const Text('Enable “Allow all the time”'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: const Color(0xFF176EC2),
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 14),

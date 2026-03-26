@@ -1,4 +1,77 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+
+OverlayEntry? _activeBlueLightToastEntry;
+Timer? _activeBlueLightToastTimer;
+
+void showBlueLightToast(
+  BuildContext context,
+  String message, {
+  Duration duration = const Duration(seconds: 2),
+}) {
+  final OverlayState? overlay = Overlay.maybeOf(context, rootOverlay: true);
+  if (overlay == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+    return;
+  }
+
+  _activeBlueLightToastTimer?.cancel();
+  _activeBlueLightToastEntry?.remove();
+
+  final OverlayEntry entry = OverlayEntry(
+    builder: (BuildContext context) {
+      return IgnorePointer(
+        child: SafeArea(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 126),
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2B303B),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0x55000000),
+                        blurRadius: 12,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    message,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
+  overlay.insert(entry);
+  _activeBlueLightToastEntry = entry;
+  _activeBlueLightToastTimer = Timer(duration, () {
+    if (_activeBlueLightToastEntry == entry) {
+      entry.remove();
+      _activeBlueLightToastEntry = null;
+    }
+  });
+}
 
 const FloatingActionButtonLocation blueLightFabLocation =
     FloatingActionButtonLocation.centerDocked;
