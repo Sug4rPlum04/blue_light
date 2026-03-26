@@ -509,8 +509,6 @@ class _MyMapPageState extends State<MyMapPage> {
           showEmergencyAlertDialog(context);
         },
       ),
-      floatingActionButton: buildBlueLightFab(() {}),
-      floatingActionButtonLocation: blueLightFabLocation,
       bottomNavigationBar: BlueLightBottomNav(
         currentIndex: 1,
         onTap: (int index) {

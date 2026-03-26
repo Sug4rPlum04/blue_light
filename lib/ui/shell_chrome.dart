@@ -73,26 +73,6 @@ void showBlueLightToast(
   });
 }
 
-const FloatingActionButtonLocation blueLightFabLocation =
-    FloatingActionButtonLocation.centerDocked;
-
-class _CenteredCircularNotchedRectangle extends NotchedShape {
-  const _CenteredCircularNotchedRectangle();
-
-  @override
-  Path getOuterPath(Rect host, Rect? guest) {
-    if (guest == null || !host.overlaps(guest)) {
-      return Path()..addRect(host);
-    }
-    final Rect centeredGuest = Rect.fromCenter(
-      center: Offset(host.center.dx, guest.center.dy),
-      width: guest.width,
-      height: guest.height,
-    );
-    return const CircularNotchedRectangle().getOuterPath(host, centeredGuest);
-  }
-}
-
 class BlueLightTopBar extends StatelessWidget implements PreferredSizeWidget {
   const BlueLightTopBar({
     super.key,
@@ -354,8 +334,6 @@ class BlueLightBottomNav extends StatelessWidget {
         child: BottomAppBar(
           color: const Color(0xFF176EC2),
           elevation: 0,
-          shape: const _CenteredCircularNotchedRectangle(),
-          notchMargin: 7,
           child: SafeArea(
             top: false,
             child: SizedBox(
@@ -364,7 +342,6 @@ class BlueLightBottomNav extends StatelessWidget {
                 children: <Widget>[
                   navCell(0),
                   navCell(1),
-                  const SizedBox(width: 74),
                   navCell(2),
                   navCell(3),
                 ],
@@ -375,34 +352,4 @@ class BlueLightBottomNav extends StatelessWidget {
       ),
     );
   }
-}
-
-Widget buildBlueLightFab(VoidCallback onPressed) {
-  return Container(
-    decoration: const BoxDecoration(
-      shape: BoxShape.circle,
-      gradient: LinearGradient(
-        colors: <Color>[
-          Color(0xFF27A6F6),
-          Color(0xFF1386DE),
-        ],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      boxShadow: <BoxShadow>[
-        BoxShadow(
-          color: Color(0x4438A0EA),
-          blurRadius: 14,
-          offset: Offset(0, 6),
-        ),
-      ],
-    ),
-    child: FloatingActionButton(
-      onPressed: onPressed,
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      shape: const CircleBorder(),
-      child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
-    ),
-  );
 }

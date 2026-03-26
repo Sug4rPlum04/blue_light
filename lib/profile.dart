@@ -563,8 +563,6 @@ class _MyProfilePageState extends State<MyProfilePage> {
           showEmergencyAlertDialog(context);
         },
       ),
-      floatingActionButton: buildBlueLightFab(() {}),
-      floatingActionButtonLocation: blueLightFabLocation,
       bottomNavigationBar: BlueLightBottomNav(
         currentIndex: -1,
         onTap: (int index) {

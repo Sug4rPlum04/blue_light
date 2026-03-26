@@ -48,8 +48,6 @@ class _MyMessagePageState extends State<MyMessagePage> {
         },
         onEmergencyTap: () => showEmergencyAlertDialog(context),
       ),
-      floatingActionButton: buildBlueLightFab(() {}),
-      floatingActionButtonLocation: blueLightFabLocation,
       bottomNavigationBar: BlueLightBottomNav(
         currentIndex: 2,
         onTap: (int index) {

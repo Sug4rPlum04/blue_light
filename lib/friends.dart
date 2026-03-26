@@ -46,8 +46,6 @@ class _MyFriendsPageState extends State<MyFriendsPage> {
           showEmergencyAlertDialog(context);
         },
       ),
-      floatingActionButton: buildBlueLightFab(() {}),
-      floatingActionButtonLocation: blueLightFabLocation,
       bottomNavigationBar: BlueLightBottomNav(
         currentIndex: 3,
         onTap: (int index) {

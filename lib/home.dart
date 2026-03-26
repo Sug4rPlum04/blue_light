@@ -46,8 +46,6 @@ class _MyHomePageState extends State<MyHomePage> {
           showEmergencyAlertDialog(context);
         },
       ),
-      floatingActionButton: buildBlueLightFab(() {}),
-      floatingActionButtonLocation: blueLightFabLocation,
       bottomNavigationBar: BlueLightBottomNav(
         currentIndex: 0,
         onTap: (int index) {
