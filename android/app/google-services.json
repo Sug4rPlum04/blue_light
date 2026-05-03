@@ -1,40 +1,21 @@
 {
   "project_info": {
-    "project_number": "130229530955",
-    "project_id": "blue-light-7248e",
-    "storage_bucket": "blue-light-7248e.firebasestorage.app"
+    "project_number": "000000000000",
+    "project_id": "replace-with-your-firebase-project-id",
+    "storage_bucket": "replace-with-your-bucket.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:130229530955:android:72fad8d309ab7d16b0b8ce",
+        "mobilesdk_app_id": "1:000000000000:android:replace_me",
         "android_client_info": {
-          "package_name": "com.example.blue_light"
+          "package_name": "com.example.replace_me"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDtkioXRtqlENAShwMo5C0AKGDYvKIpDNM"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:130229530955:android:b215a540bcb451d9b0b8ce",
-        "android_client_info": {
-          "package_name": "com.sug4rplum.bluelight"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDtkioXRtqlENAShwMo5C0AKGDYvKIpDNM"
+          "current_key": "REPLACE_WITH_ANDROID_WEB_API_KEY"
         }
       ],
       "services": {
