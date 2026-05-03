@@ -1,0 +1,9 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Locked-down default. Deploy this before making repo public.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

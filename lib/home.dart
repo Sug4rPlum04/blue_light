@@ -11,6 +11,7 @@ import 'package:blue_light/ui/emergency_alerts.dart';
 import 'package:blue_light/services/friend_service.dart';
 import 'package:blue_light/ui/shell_chrome.dart';
 import 'package:blue_light/ui/user_profile_preview.dart';
+import 'package:blue_light/utils/user_display.dart';
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
@@ -22,14 +23,11 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  final List<String> _fallbackActivityLogs =
-      List.generate(5, (int i) => "Activity log ${i + 1}");
   final FriendService _friendService = FriendService();
   final Set<String> _suggestionBusyUserIds = <String>{};
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       appBar: BlueLightTopBar(
         title: widget.title,
@@ -56,7 +54,8 @@ class _MyHomePageState extends State<MyHomePage> {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (BuildContext context) => const MyMapPage(title: "Map"),
+                builder: (BuildContext context) =>
+                    const MyMapPage(title: "Map"),
               ),
             );
             return;
@@ -103,14 +102,14 @@ class _MyHomePageState extends State<MyHomePage> {
     final User? user = FirebaseAuth.instance.currentUser;
     final Stream<QuerySnapshot<Map<String, dynamic>>>? activityStream =
         user == null
-            ? null
-            : FirebaseFirestore.instance
-                .collection('users')
-                .doc(user.uid)
-                .collection('activity')
-                .orderBy('createdAt', descending: true)
-                .limit(20)
-                .snapshots();
+        ? null
+        : FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .collection('activity')
+              .orderBy('createdAt', descending: true)
+              .limit(20)
+              .snapshots();
 
     return Stack(
       children: <Widget>[
@@ -132,51 +131,61 @@ class _MyHomePageState extends State<MyHomePage> {
               ? _buildFallbackActivityList()
               : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: activityStream,
-                  builder: (
-                    BuildContext context,
-                    AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snapshot,
-                  ) {
-                    if (snapshot.connectionState == ConnectionState.waiting &&
-                        !snapshot.hasData) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 24),
-                        child: Center(child: CircularProgressIndicator()),
-                      );
-                    }
-                    final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs =
-                        snapshot.data?.docs ?? <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-                    if (docs.isEmpty) {
-                      return _buildFallbackActivityList();
-                    }
-                    return ListView.builder(
-                      itemCount: docs.length,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemBuilder: (BuildContext context, int index) {
-                        final QueryDocumentSnapshot<Map<String, dynamic>> doc =
-                            docs[index];
-                        final Map<String, dynamic> data = doc.data();
-                        return Dismissible(
-                          key: ValueKey<String>(doc.id),
-                          direction: DismissDirection.endToStart,
-                          background: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 8),
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            alignment: Alignment.centerRight,
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              borderRadius: BorderRadius.circular(15),
-                            ),
-                            child: const Icon(Icons.delete, color: Colors.white),
-                          ),
-                          onDismissed: (_) {
-                            doc.reference.delete();
+                  builder:
+                      (
+                        BuildContext context,
+                        AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>>
+                        snapshot,
+                      ) {
+                        if (snapshot.connectionState ==
+                                ConnectionState.waiting &&
+                            !snapshot.hasData) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        final List<QueryDocumentSnapshot<Map<String, dynamic>>>
+                        docs =
+                            snapshot.data?.docs ??
+                            <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                        if (docs.isEmpty) {
+                          return _buildFallbackActivityList();
+                        }
+                        return ListView.builder(
+                          itemCount: docs.length,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemBuilder: (BuildContext context, int index) {
+                            final QueryDocumentSnapshot<Map<String, dynamic>>
+                            doc = docs[index];
+                            final Map<String, dynamic> data = doc.data();
+                            return Dismissible(
+                              key: ValueKey<String>(doc.id),
+                              direction: DismissDirection.endToStart,
+                              background: Container(
+                                margin: const EdgeInsets.symmetric(vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                ),
+                                alignment: Alignment.centerRight,
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(15),
+                                ),
+                                child: const Icon(
+                                  Icons.delete,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              onDismissed: (_) {
+                                doc.reference.delete();
+                              },
+                              child: _buildActivityContent(doc, data),
+                            );
                           },
-                          child: _buildActivityContent(doc, data),
                         );
                       },
-                    );
-                  },
                 ),
         ),
         const Positioned(
@@ -187,10 +196,7 @@ class _MyHomePageState extends State<MyHomePage> {
               padding: EdgeInsets.symmetric(horizontal: 10),
               child: Text(
                 "Activity",
-                style: TextStyle(
-                  fontSize: 25,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -200,13 +206,22 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Widget _buildFallbackActivityList() {
-    return ListView.builder(
-      itemCount: _fallbackActivityLogs.length,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemBuilder: (BuildContext context, int index) {
-        return _activityTile(_fallbackActivityLogs[index]);
-      },
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Text(
+        'No notifications at this time.',
+        style: TextStyle(
+          fontSize: 14,
+          color: Colors.grey.shade700,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
     );
   }
 
@@ -225,9 +240,7 @@ class _MyHomePageState extends State<MyHomePage> {
       decoration: BoxDecoration(
         color: isUrgent ? const Color(0xFFFFECEC) : Colors.blue.shade50,
         borderRadius: BorderRadius.circular(15),
-        border: isUrgent
-            ? Border.all(color: const Color(0xFFFFC9C9))
-            : null,
+        border: isUrgent ? Border.all(color: const Color(0xFFFFC9C9)) : null,
       ),
       child: Row(
         children: <Widget>[
@@ -249,10 +262,7 @@ class _MyHomePageState extends State<MyHomePage> {
           ],
           if (isUrgent) ...<Widget>[
             const SizedBox(width: 8),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: Color(0xFFD32F2F),
-            ),
+            const Icon(Icons.chevron_right_rounded, color: Color(0xFFD32F2F)),
           ],
         ],
       ),
@@ -272,7 +282,9 @@ class _MyHomePageState extends State<MyHomePage> {
     return CircleAvatar(
       radius: 14,
       backgroundColor: const Color(0xFFE3EDF8),
-      backgroundImage: photoUrl.trim().isNotEmpty ? NetworkImage(photoUrl) : null,
+      backgroundImage: photoUrl.trim().isNotEmpty
+          ? NetworkImage(photoUrl)
+          : null,
       child: photoUrl.trim().isNotEmpty
           ? null
           : const Icon(
@@ -288,11 +300,12 @@ class _MyHomePageState extends State<MyHomePage> {
     Map<String, dynamic> data,
   ) {
     final String type = (data['type'] as String?) ?? '';
-    final String fallbackText = (data['title'] as String?)?.trim().isNotEmpty == true
+    final String fallbackText =
+        (data['title'] as String?)?.trim().isNotEmpty == true
         ? data['title'] as String
         : (data['message'] as String?) ?? 'You have a new activity update.';
-    final String? fromUserId = (data['fromUserId'] as String?)?.trim().isNotEmpty ==
-            true
+    final String? fromUserId =
+        (data['fromUserId'] as String?)?.trim().isNotEmpty == true
         ? (data['fromUserId'] as String).trim()
         : null;
 
@@ -300,10 +313,7 @@ class _MyHomePageState extends State<MyHomePage> {
         !(type == 'friend_request' ||
             type == 'friend_request_accepted' ||
             type == 'emergency_alert')) {
-      return _activityTile(
-        fallbackText,
-        icon: Icons.notifications,
-      );
+      return _activityTile(fallbackText, icon: Icons.notifications);
     }
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -311,105 +321,109 @@ class _MyHomePageState extends State<MyHomePage> {
           .collection('users')
           .doc(fromUserId)
           .snapshots(),
-      builder: (
-        BuildContext context,
-        AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> userSnapshot,
-      ) {
-        final Map<String, dynamic> userData =
-            userSnapshot.data?.data() ?? <String, dynamic>{};
-        final String liveName =
-            (userData['username'] as String?)?.trim().isNotEmpty == true
+      builder:
+          (
+            BuildContext context,
+            AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> userSnapshot,
+          ) {
+            final Map<String, dynamic> userData =
+                userSnapshot.data?.data() ?? <String, dynamic>{};
+            final String liveName =
+                (userData['username'] as String?)?.trim().isNotEmpty == true
                 ? (userData['username'] as String).trim()
                 : ((data['fromUsername'] as String?)?.trim().isNotEmpty == true
-                    ? (data['fromUsername'] as String).trim()
-                    : 'User');
-        final String livePhoto =
-            (userData['photoUrl'] as String?)?.trim().isNotEmpty == true
+                      ? (data['fromUsername'] as String).trim()
+                      : 'User');
+            final String livePhoto =
+                (userData['photoUrl'] as String?)?.trim().isNotEmpty == true
                 ? (userData['photoUrl'] as String).trim()
                 : ((data['fromPhotoUrl'] as String?)?.trim() ?? '');
 
-        final String text = type == 'friend_request'
-            ? '$liveName has sent you a friend request.'
-            : type == 'friend_request_accepted'
+            final String text = type == 'friend_request'
+                ? '$liveName has sent you a friend request.'
+                : type == 'friend_request_accepted'
                 ? '$liveName has accepted your friend request.'
                 : (data['situation'] as String?)?.trim().isNotEmpty == true
-                    ? '$liveName SOS: ${((data['situation'] as String).trim()).toUpperCase()}.'
-                    : '$liveName sent an SOS alert.';
+                ? '$liveName SOS: ${((data['situation'] as String).trim()).toUpperCase()}.'
+                : '$liveName sent an SOS alert.';
 
-        return _activityTile(
-          text,
-          icon: type == 'friend_request'
-              ? Icons.person_add_alt_1_rounded
-              : type == 'emergency_alert'
+            return _activityTile(
+              text,
+              icon: type == 'friend_request'
+                  ? Icons.person_add_alt_1_rounded
+                  : type == 'emergency_alert'
                   ? Icons.warning_amber_rounded
                   : Icons.verified_rounded,
-          iconColor: type == 'friend_request'
-              ? const Color(0xFF0C8AE8)
-              : type == 'emergency_alert'
+              iconColor: type == 'friend_request'
+                  ? const Color(0xFF0C8AE8)
+                  : type == 'emergency_alert'
                   ? const Color(0xFFD32F2F)
                   : const Color(0xFF2E7D32),
-          leading: type == 'friend_request'
-              ? GestureDetector(
-                  onTap: () async {
-                    try {
-                      await showUserProfilePreviewDialog(
-                        context: context,
-                        targetUserId: fromUserId,
-                        fallbackUsername: liveName,
-                        fallbackPhotoUrl: livePhoto,
-                      );
-                    } catch (_) {}
-                  },
-                  child: _activityAvatar(livePhoto),
-                )
-              : null,
-          trailing: type == 'friend_request'
-              ? SizedBox(
-                  width: 84,
-                  height: 32,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      try {
-                        await _friendService.acceptFriendRequest(
-                          fromUserId: fromUserId,
-                          activityDocIdToDelete: doc.id,
-                        );
-                      } catch (e) {
-                        if (!mounted) {
-                          return;
-                        }
-                        showBlueLightToast(
-                          context,
-                          e.toString().replaceFirst('Exception: ', ''),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1E9CEB),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      minimumSize: const Size(0, 0),
-                      padding: EdgeInsets.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+              leading: type == 'friend_request'
+                  ? GestureDetector(
+                      onTap: () async {
+                        try {
+                          await showUserProfilePreviewDialog(
+                            context: context,
+                            targetUserId: fromUserId,
+                            fallbackUsername: liveName,
+                            fallbackPhotoUrl: livePhoto,
+                          );
+                        } catch (_) {}
+                      },
+                      child: _activityAvatar(livePhoto),
+                    )
+                  : null,
+              trailing: type == 'friend_request'
+                  ? SizedBox(
+                      width: 84,
+                      height: 32,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          try {
+                            await _friendService.acceptFriendRequest(
+                              fromUserId: fromUserId,
+                              activityDocIdToDelete: doc.id,
+                            );
+                          } catch (e) {
+                            if (!mounted) {
+                              return;
+                            }
+                            showBlueLightToast(
+                              context,
+                              e.toString().replaceFirst('Exception: ', ''),
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E9CEB),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          minimumSize: const Size(0, 0),
+                          padding: EdgeInsets.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text(
+                          'Add',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
-                    ),
-                    child: const Text(
-                      'Add',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                )
-              : null,
-          onTap: type == 'emergency_alert'
-              ? () {
-                  _showEmergencyAlertDetails(data);
-                }
-              : null,
-          isUrgent: type == 'emergency_alert',
-        );
-      },
+                    )
+                  : null,
+              onTap: type == 'emergency_alert'
+                  ? () {
+                      _showEmergencyAlertDetails(data);
+                    }
+                  : null,
+              isUrgent: type == 'emergency_alert',
+            );
+          },
     );
   }
 
@@ -437,11 +451,12 @@ class _MyHomePageState extends State<MyHomePage> {
     if (fromUsername.isEmpty) {
       fromUsername = 'Unknown user';
     }
-    final String situation = (data['situation'] as String?)?.trim().isNotEmpty == true
+    final String situation =
+        (data['situation'] as String?)?.trim().isNotEmpty == true
         ? (data['situation'] as String).trim()
         : 'Not specified';
-    final String audienceRaw = (data['audienceDisplay'] as String?)?.trim().isNotEmpty ==
-            true
+    final String audienceRaw =
+        (data['audienceDisplay'] as String?)?.trim().isNotEmpty == true
         ? (data['audienceDisplay'] as String).trim()
         : _humanAudience((data['audience'] as String?)?.trim() ?? '');
     final String audience = audienceRaw.replaceAll(' (trusted contacts)', '');
@@ -486,7 +501,10 @@ class _MyHomePageState extends State<MyHomePage> {
                         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: <Color>[Color(0xFFE53935), Color(0xFFBF1D1D)],
+                            colors: <Color>[
+                              Color(0xFFE53935),
+                              Color(0xFFBF1D1D),
+                            ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
@@ -539,18 +557,19 @@ class _MyHomePageState extends State<MyHomePage> {
                                           MaterialPageRoute<ChatThreadPage>(
                                             builder: (BuildContext context) =>
                                                 ChatThreadPage(
-                                              peerUserId: fromUserId,
-                                              peerUsername: fromUsername,
-                                              peerPhotoUrl: fromPhotoUrl,
-                                            ),
+                                                  peerUserId: fromUserId,
+                                                  peerUsername: fromUsername,
+                                                  peerPhotoUrl: fromPhotoUrl,
+                                                ),
                                           ),
                                         );
                                       }
                                     : null,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF1E9CEB),
-                                  disabledBackgroundColor:
-                                      const Color(0xFF9FB7CC),
+                                  disabledBackgroundColor: const Color(
+                                    0xFF9FB7CC,
+                                  ),
                                   foregroundColor: Colors.white,
                                   disabledForegroundColor: Colors.white70,
                                   elevation: 0,
@@ -564,7 +583,10 @@ class _MyHomePageState extends State<MyHomePage> {
                                 child: const Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: <Widget>[
-                                    Icon(Icons.mark_unread_chat_alt_rounded, size: 18),
+                                    Icon(
+                                      Icons.mark_unread_chat_alt_rounded,
+                                      size: 18,
+                                    ),
                                     SizedBox(width: 6),
                                     Flexible(
                                       child: Text(
@@ -599,8 +621,9 @@ class _MyHomePageState extends State<MyHomePage> {
                                     : null,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF176EC2),
-                                  disabledBackgroundColor:
-                                      const Color(0xFF9FB7CC),
+                                  disabledBackgroundColor: const Color(
+                                    0xFF9FB7CC,
+                                  ),
                                   foregroundColor: Colors.white,
                                   disabledForegroundColor: Colors.white70,
                                   elevation: 0,
@@ -773,7 +796,8 @@ class _MyHomePageState extends State<MyHomePage> {
       showBlueLightToast(context, 'Alert location is not available.');
       return;
     }
-    final String latLng = '${latitude.toStringAsFixed(6)},${longitude.toStringAsFixed(6)}';
+    final String latLng =
+        '${latitude.toStringAsFixed(6)},${longitude.toStringAsFixed(6)}';
     final List<Uri> navigationUris = <Uri>[
       Uri.parse('google.navigation:q=$latLng&mode=d'),
       Uri.parse('geo:$latLng?q=$latLng'),
@@ -803,10 +827,7 @@ class _MyHomePageState extends State<MyHomePage> {
       );
     } catch (_) {
       if (!mounted) return;
-      showBlueLightToast(
-        context,
-        'Could not open navigation right now.',
-      );
+      showBlueLightToast(context, 'Could not open navigation right now.');
     }
   }
 
@@ -818,7 +839,10 @@ class _MyHomePageState extends State<MyHomePage> {
     }
 
     final Stream<DocumentSnapshot<Map<String, dynamic>>> meStream =
-        FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .snapshots();
     final Stream<QuerySnapshot<Map<String, dynamic>>> usersStream =
         FirebaseFirestore.instance.collection('users').snapshots();
 
@@ -842,88 +866,98 @@ class _MyHomePageState extends State<MyHomePage> {
 
           child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
             stream: meStream,
-            builder: (
-              BuildContext context,
-              AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> meSnap,
-            ) {
-              final Map<String, dynamic> myData =
-                  meSnap.data?.data() ?? <String, dynamic>{};
-              final Set<String> myFriendIds =
-                  ((myData['friendIds'] as List?) ?? <dynamic>[])
-                      .whereType<String>()
-                      .toSet();
-              final double radiusMiles =
-                  (myData['nearbyAlertRadiusMiles'] as num?)?.toDouble() ?? 5.0;
-              final num? myLat = myData['locationLat'] as num?;
-              final num? myLng = myData['locationLng'] as num?;
-
-              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: usersStream,
-                builder: (
+            builder:
+                (
                   BuildContext context,
-                  AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> usersSnap,
+                  AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> meSnap,
                 ) {
-                  if (usersSnap.connectionState == ConnectionState.waiting &&
-                      !usersSnap.hasData) {
-                    return const SizedBox(
-                      height: 92,
-                      child: Center(child: CircularProgressIndicator()),
-                    );
-                  }
+                  final Map<String, dynamic> myData =
+                      meSnap.data?.data() ?? <String, dynamic>{};
+                  final Set<String> myFriendIds =
+                      ((myData['friendIds'] as List?) ?? <dynamic>[])
+                          .whereType<String>()
+                          .toSet();
+                  final double radiusMiles =
+                      (myData['nearbyAlertRadiusMiles'] as num?)?.toDouble() ??
+                      5.0;
+                  final num? myLat = myData['locationLat'] as num?;
+                  final num? myLng = myData['locationLng'] as num?;
 
-                  final List<_NearbyFriendItem> nearby = _buildNearbyFriends(
-                    users: usersSnap.data?.docs ??
-                        <QueryDocumentSnapshot<Map<String, dynamic>>>[],
-                    myFriendIds: myFriendIds,
-                    myLat: myLat?.toDouble(),
-                    myLng: myLng?.toDouble(),
-                    radiusMiles: radiusMiles,
-                  );
+                  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: usersStream,
+                    builder:
+                        (
+                          BuildContext context,
+                          AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>>
+                          usersSnap,
+                        ) {
+                          if (usersSnap.connectionState ==
+                                  ConnectionState.waiting &&
+                              !usersSnap.hasData) {
+                            return const SizedBox(
+                              height: 92,
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
 
-                  if (nearby.isEmpty) {
-                    return SizedBox(
-                      height: 82,
-                      child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(
-                              Icons.location_searching_rounded,
-                              size: 20,
-                              color: Colors.blueGrey.shade300,
+                          final List<_NearbyFriendItem>
+                          nearby = _buildNearbyFriends(
+                            users:
+                                usersSnap.data?.docs ??
+                                <QueryDocumentSnapshot<Map<String, dynamic>>>[],
+                            myFriendIds: myFriendIds,
+                            myLat: myLat?.toDouble(),
+                            myLng: myLng?.toDouble(),
+                            radiusMiles: radiusMiles,
+                          );
+
+                          if (nearby.isEmpty) {
+                            return SizedBox(
+                              height: 82,
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    Icon(
+                                      Icons.location_searching_rounded,
+                                      size: 20,
+                                      color: Colors.blueGrey.shade300,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'No friends nearby right now.',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
+
+                          return SizedBox(
+                            height: 140,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: nearby.length > 7 ? 7 : nearby.length,
+                              itemBuilder: (BuildContext context, int index) {
+                                final _NearbyFriendItem friend = nearby[index];
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 16),
+                                  child: _friendTile(
+                                    name: friend.name,
+                                    milesText:
+                                        '${friend.distanceMiles.toStringAsFixed(1)} mi',
+                                    photoUrl: friend.photoUrl,
+                                  ),
+                                );
+                              },
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'No friends nearby right now.',
-                              style: TextStyle(color: Colors.grey.shade700),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-
-                  return SizedBox(
-                    height: 140,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: nearby.length > 7 ? 7 : nearby.length,
-                      itemBuilder: (BuildContext context, int index) {
-                        final _NearbyFriendItem friend = nearby[index];
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 16),
-                          child: _friendTile(
-                            name: friend.name,
-                            milesText: '${friend.distanceMiles.toStringAsFixed(1)} mi',
-                            photoUrl: friend.photoUrl,
-                          ),
-                        );
-                      },
-                    ),
+                          );
+                        },
                   );
                 },
-              );
-            },
           ),
         ),
 
@@ -936,10 +970,7 @@ class _MyHomePageState extends State<MyHomePage> {
               padding: EdgeInsets.symmetric(horizontal: 10),
               child: Text(
                 "Nearby Friends",
-                style: TextStyle(
-                  fontSize: 25,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -999,10 +1030,7 @@ class _MyHomePageState extends State<MyHomePage> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 13.5,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
           ),
           const SizedBox(height: 3),
           Text(
@@ -1029,7 +1057,10 @@ class _MyHomePageState extends State<MyHomePage> {
     }
 
     final Stream<DocumentSnapshot<Map<String, dynamic>>> meStream =
-        FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .snapshots();
     final Stream<QuerySnapshot<Map<String, dynamic>>> incomingStream =
         FirebaseFirestore.instance
             .collection('users')
@@ -1063,107 +1094,212 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
           child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
             stream: meStream,
-            builder: (
-              BuildContext context,
-              AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> meSnap,
-            ) {
-              final Set<String> myFriendIds =
-                  ((meSnap.data?.data()?['friendIds'] as List?) ?? <dynamic>[])
-                      .whereType<String>()
-                      .toSet();
-              final Set<String> dismissedSuggestionIds =
-                  ((meSnap.data?.data()?['dismissedSuggestionIds'] as List?) ??
-                          <dynamic>[])
-                      .whereType<String>()
-                      .toSet();
-
-              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: incomingStream,
-                builder: (
+            builder:
+                (
                   BuildContext context,
-                  AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> incomingSnap,
+                  AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> meSnap,
                 ) {
-                  final Set<String> incomingIds = (incomingSnap.data?.docs ??
-                          <QueryDocumentSnapshot<Map<String, dynamic>>>[])
-                      .map((QueryDocumentSnapshot<Map<String, dynamic>> d) => d.id)
-                      .toSet();
+                  if (meSnap.hasError) {
+                    return const SizedBox(
+                      height: 82,
+                      child: Center(
+                        child: Text(
+                          'Could not load your profile data right now.',
+                        ),
+                      ),
+                    );
+                  }
+                  final Set<String> myFriendIds =
+                      ((meSnap.data?.data()?['friendIds'] as List?) ??
+                              <dynamic>[])
+                          .whereType<String>()
+                          .toSet();
+                  final Set<String> dismissedSuggestionIds =
+                      ((meSnap.data?.data()?['dismissedSuggestionIds']
+                                  as List?) ??
+                              <dynamic>[])
+                          .whereType<String>()
+                          .toSet();
 
                   return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: outgoingStream,
-                    builder: (
-                      BuildContext context,
-                      AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>>
-                          outgoingSnap,
-                    ) {
-                      final Set<String> outgoingIds = (outgoingSnap.data?.docs ??
-                              <QueryDocumentSnapshot<Map<String, dynamic>>>[])
-                          .map((QueryDocumentSnapshot<Map<String, dynamic>> d) {
-                        final Map<String, dynamic> data = d.data();
-                        return (data['toUserId'] as String?)?.trim() ?? d.id;
-                      }).where((String id) => id.isNotEmpty).toSet();
-
-                      return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                        stream: usersStream,
-                        builder: (
+                    stream: incomingStream,
+                    builder:
+                        (
                           BuildContext context,
                           AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>>
-                              usersSnap,
+                          incomingSnap,
                         ) {
-                          if (usersSnap.connectionState == ConnectionState.waiting &&
-                              !usersSnap.hasData) {
-                            return const SizedBox(
-                              height: 92,
-                              child: Center(child: CircularProgressIndicator()),
-                            );
-                          }
-
-                          final List<_SuggestedUserItem> suggestions =
-                              _buildSuggestedUsers(
-                            users: usersSnap.data?.docs ??
-                                <QueryDocumentSnapshot<Map<String, dynamic>>>[],
-                            currentUserId: user.uid,
-                            myFriendIds: myFriendIds,
-                            incomingIds: incomingIds,
-                            outgoingIds: outgoingIds,
-                            dismissedSuggestionIds: dismissedSuggestionIds,
-                          );
-
-                          if (suggestions.isEmpty) {
+                          if (incomingSnap.hasError) {
                             return const SizedBox(
                               height: 82,
                               child: Center(
-                                child: Text('No suggested friends right now.'),
+                                child: Text(
+                                  'Could not load incoming requests right now.',
+                                ),
                               ),
                             );
                           }
+                          final Set<String> incomingIds =
+                              (incomingSnap.data?.docs ??
+                                      <
+                                        QueryDocumentSnapshot<
+                                          Map<String, dynamic>
+                                        >
+                                      >[])
+                                  .map(
+                                    (
+                                      QueryDocumentSnapshot<
+                                        Map<String, dynamic>
+                                      >
+                                      d,
+                                    ) => d.id,
+                                  )
+                                  .toSet();
 
-                          return SizedBox(
-                            height: 188,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: suggestions.length > 10
-                                  ? 10
-                                  : suggestions.length,
-                              itemBuilder: (BuildContext context, int index) {
-                                final _SuggestedUserItem suggestion =
-                                    suggestions[index];
-                                return Padding(
-                                  padding: const EdgeInsets.only(right: 14),
-                                  child: _suggestedFriendTile(
-                                    currentUserId: user.uid,
-                                    suggestion: suggestion,
-                                  ),
-                                );
-                              },
-                            ),
+                          return StreamBuilder<
+                            QuerySnapshot<Map<String, dynamic>>
+                          >(
+                            stream: outgoingStream,
+                            builder:
+                                (
+                                  BuildContext context,
+                                  AsyncSnapshot<
+                                    QuerySnapshot<Map<String, dynamic>>
+                                  >
+                                  outgoingSnap,
+                                ) {
+                                  if (outgoingSnap.hasError) {
+                                    return const SizedBox(
+                                      height: 82,
+                                      child: Center(
+                                        child: Text(
+                                          'Could not load outgoing requests right now.',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  final Set<String> outgoingIds =
+                                      (outgoingSnap.data?.docs ??
+                                              <
+                                                QueryDocumentSnapshot<
+                                                  Map<String, dynamic>
+                                                >
+                                              >[])
+                                          .map((
+                                            QueryDocumentSnapshot<
+                                              Map<String, dynamic>
+                                            >
+                                            d,
+                                          ) {
+                                            final Map<String, dynamic> data = d
+                                                .data();
+                                            return (data['toUserId'] as String?)
+                                                    ?.trim() ??
+                                                d.id;
+                                          })
+                                          .where((String id) => id.isNotEmpty)
+                                          .toSet();
+
+                                  return StreamBuilder<
+                                    QuerySnapshot<Map<String, dynamic>>
+                                  >(
+                                    stream: usersStream,
+                                    builder:
+                                        (
+                                          BuildContext context,
+                                          AsyncSnapshot<
+                                            QuerySnapshot<Map<String, dynamic>>
+                                          >
+                                          usersSnap,
+                                        ) {
+                                          if (usersSnap.hasError) {
+                                            return const SizedBox(
+                                              height: 82,
+                                              child: Center(
+                                                child: Text(
+                                                  'Could not load users right now. Check Firestore rules and connection.',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                          if (usersSnap.connectionState ==
+                                                  ConnectionState.waiting &&
+                                              !usersSnap.hasData) {
+                                            return const SizedBox(
+                                              height: 92,
+                                              child: Center(
+                                                child:
+                                                    CircularProgressIndicator(),
+                                              ),
+                                            );
+                                          }
+
+                                          final List<_SuggestedUserItem>
+                                          suggestions = _buildSuggestedUsers(
+                                            users:
+                                                usersSnap.data?.docs ??
+                                                <
+                                                  QueryDocumentSnapshot<
+                                                    Map<String, dynamic>
+                                                  >
+                                                >[],
+                                            currentUserId: user.uid,
+                                            myFriendIds: myFriendIds,
+                                            incomingIds: incomingIds,
+                                            outgoingIds: outgoingIds,
+                                            dismissedSuggestionIds:
+                                                dismissedSuggestionIds,
+                                          );
+
+                                          if (suggestions.isEmpty) {
+                                            return const SizedBox(
+                                              height: 82,
+                                              child: Center(
+                                                child: Text(
+                                                  'No suggested friends right now.',
+                                                ),
+                                              ),
+                                            );
+                                          }
+
+                                          return SizedBox(
+                                            height: 188,
+                                            child: ListView.builder(
+                                              scrollDirection: Axis.horizontal,
+                                              itemCount: suggestions.length > 10
+                                                  ? 10
+                                                  : suggestions.length,
+                                              itemBuilder:
+                                                  (
+                                                    BuildContext context,
+                                                    int index,
+                                                  ) {
+                                                    final _SuggestedUserItem
+                                                    suggestion =
+                                                        suggestions[index];
+                                                    return Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                            right: 14,
+                                                          ),
+                                                      child:
+                                                          _suggestedFriendTile(
+                                                            currentUserId:
+                                                                user.uid,
+                                                            suggestion:
+                                                                suggestion,
+                                                          ),
+                                                    );
+                                                  },
+                                            ),
+                                          );
+                                        },
+                                  );
+                                },
                           );
                         },
-                      );
-                    },
                   );
                 },
-              );
-            },
           ),
         ),
 
@@ -1175,14 +1311,11 @@ class _MyHomePageState extends State<MyHomePage> {
               padding: EdgeInsets.symmetric(horizontal: 10),
               child: Text(
                 "Suggested for you",
-                style: TextStyle(
-                  fontSize: 25,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
               ),
             ),
           ),
-        )
+        ),
       ],
     );
   }
@@ -1290,64 +1423,64 @@ class _MyHomePageState extends State<MyHomePage> {
                         ),
                       )
                     : suggestion.buttonState == _SuggestedButtonState.received
-                        ? ElevatedButton(
-                            onPressed: isBusy
-                                ? null
-                                : () async {
-                                    await _runSuggestionAction(
-                                      suggestion.uid,
-                                      () => _friendService.acceptFriendRequest(
-                                        fromUserId: suggestion.uid,
-                                      ),
-                                    );
-                                  },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.lightBlue,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              padding: EdgeInsets.zero,
-                              minimumSize: const Size(0, 0),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text(
-                              'Accept',
-                              style: TextStyle(
-                                fontSize: 11.0,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          )
-                        : OutlinedButton(
-                            onPressed: isBusy
-                                ? null
-                                : () async {
-                                    await _runSuggestionAction(
-                                      suggestion.uid,
-                                      () => _friendService.cancelFriendRequest(
-                                        toUserId: suggestion.uid,
-                                      ),
-                                    );
-                                  },
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Color(0xFF1E9CEB)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text(
-                              'Requested',
-                              maxLines: 1,
-                              softWrap: false,
-                              style: TextStyle(
-                                fontSize: 10.4,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF1E9CEB),
-                              ),
-                            ),
+                    ? ElevatedButton(
+                        onPressed: isBusy
+                            ? null
+                            : () async {
+                                await _runSuggestionAction(
+                                  suggestion.uid,
+                                  () => _friendService.acceptFriendRequest(
+                                    fromUserId: suggestion.uid,
+                                  ),
+                                );
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.lightBlue,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
+                        ),
+                        child: const Text(
+                          'Accept',
+                          style: TextStyle(
+                            fontSize: 11.0,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    : OutlinedButton(
+                        onPressed: isBusy
+                            ? null
+                            : () async {
+                                await _runSuggestionAction(
+                                  suggestion.uid,
+                                  () => _friendService.cancelFriendRequest(
+                                    toUserId: suggestion.uid,
+                                  ),
+                                );
+                              },
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFF1E9CEB)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Requested',
+                          maxLines: 1,
+                          softWrap: false,
+                          style: TextStyle(
+                            fontSize: 10.4,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF1E9CEB),
+                          ),
+                        ),
+                      ),
               ),
             ],
           ),
@@ -1394,7 +1527,7 @@ class _MyHomePageState extends State<MyHomePage> {
       }
       final Map<String, dynamic> data = doc.data();
       final bool trackingEnabled =
-          (data['locationTrackingEnabled'] as bool?) ?? true;
+          (data['locationTrackingEnabled'] as bool?) ?? false;
       if (!trackingEnabled) {
         continue;
       }
@@ -1415,9 +1548,7 @@ class _MyHomePageState extends State<MyHomePage> {
         continue;
       }
 
-      final String name = (data['username'] as String?)?.trim().isNotEmpty == true
-          ? (data['username'] as String).trim()
-          : ((data['email'] as String?)?.split('@').first ?? 'User');
+      final String name = resolveDisplayName(data, userId: doc.id);
       final String photoUrl = (data['photoUrl'] as String?)?.trim() ?? '';
 
       nearby.add(
@@ -1456,9 +1587,7 @@ class _MyHomePageState extends State<MyHomePage> {
       }
 
       final Map<String, dynamic> data = doc.data();
-      final String username = (data['username'] as String?)?.trim().isNotEmpty == true
-          ? (data['username'] as String).trim()
-          : ((data['email'] as String?)?.split('@').first ?? 'User');
+      final String username = resolveDisplayName(data, userId: uid);
       final String photoUrl = (data['photoUrl'] as String?)?.trim() ?? '';
       final Set<String> otherFriendIds =
           ((data['friendIds'] as List?) ?? <dynamic>[])
@@ -1497,14 +1626,19 @@ class _MyHomePageState extends State<MyHomePage> {
     return suggestions;
   }
 
-  Future<void> _dismissSuggestedUser(String currentUserId, String targetUserId) async {
+  Future<void> _dismissSuggestedUser(
+    String currentUserId,
+    String targetUserId,
+  ) async {
     try {
-      await FirebaseFirestore.instance.collection('users').doc(currentUserId).set(
-        <String, dynamic>{
-          'dismissedSuggestionIds': FieldValue.arrayUnion(<String>[targetUserId]),
-        },
-        SetOptions(merge: true),
-      );
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUserId)
+          .set(<String, dynamic>{
+            'dismissedSuggestionIds': FieldValue.arrayUnion(<String>[
+              targetUserId,
+            ]),
+          }, SetOptions(merge: true));
     } catch (e) {
       if (!mounted) {
         return;
@@ -1540,11 +1674,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 
-enum _SuggestedButtonState {
-  add,
-  requested,
-  received,
-}
+enum _SuggestedButtonState { add, requested, received }
 
 class _NearbyFriendItem {
   const _NearbyFriendItem({
@@ -1590,7 +1720,10 @@ Widget _navItem({
         children: [
           Icon(icon, color: Colors.white),
           const SizedBox(height: 4),
-          Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+          ),
         ],
       ),
     ),

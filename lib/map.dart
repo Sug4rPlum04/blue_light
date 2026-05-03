@@ -27,7 +27,7 @@ class _MyMapPageState extends State<MyMapPage> {
   final MapController _mapController = MapController();
 
   bool _isLoading = true;
-  bool _trackingEnabled = true;
+  bool _trackingEnabled = false;
   bool _isLocating = false;
   String? _statusMessage;
   LatLng? _currentLatLng;
@@ -72,7 +72,7 @@ class _MyMapPageState extends State<MyMapPage> {
       _isLocating = true;
       _statusMessage = null;
       _currentLatLng = null;
-      _trackingEnabled = true;
+      _trackingEnabled = false;
     });
 
     try {
@@ -89,19 +89,36 @@ class _MyMapPageState extends State<MyMapPage> {
         return;
       }
 
-      bool trackingEnabled = true;
+      late final bool trackingEnabled;
       try {
         final DocumentSnapshot<Map<String, dynamic>> snapshot =
             await FirebaseFirestore.instance
                 .collection('users')
                 .doc(user.uid)
                 .get()
-                .timeout(const Duration(seconds: 5));
+                .timeout(const Duration(seconds: 8));
         trackingEnabled =
-            (snapshot.data()?['locationTrackingEnabled'] as bool?) ?? true;
+            (snapshot.data()?['locationTrackingEnabled'] as bool?) ?? false;
       } catch (_) {
-        trackingEnabled = true;
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _trackingEnabled = true;
+          _isLoading = false;
+          _isLocating = false;
+          _statusMessage =
+              'Could not load your tracking setting. Check connection and try again.';
+        });
+        return;
       }
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _trackingEnabled = trackingEnabled;
+      });
 
       if (!trackingEnabled) {
         if (!mounted) {
@@ -321,7 +338,7 @@ class _MyMapPageState extends State<MyMapPage> {
               }
               final Map<String, dynamic> data = doc.data();
               final bool trackingOn =
-                  (data['locationTrackingEnabled'] as bool?) ?? true;
+                  (data['locationTrackingEnabled'] as bool?) ?? false;
               if (!trackingOn) {
                 continue;
               }

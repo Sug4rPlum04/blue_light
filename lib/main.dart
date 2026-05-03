@@ -1,18 +1,21 @@
+import 'dart:async';
+
 import 'package:blue_light/forgot_password.dart';
 import 'package:blue_light/home.dart';
+import 'package:blue_light/services/background_location_service.dart';
 import 'package:blue_light/sign_up.dart';
 import 'package:blue_light/ui/shell_chrome.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 
@@ -74,8 +77,71 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class _AuthGate extends StatelessWidget {
+class _AuthGate extends StatefulWidget {
   const _AuthGate();
+
+  @override
+  State<_AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
+  bool _ranStartupFlow = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(BackgroundLocationService.instance.syncForCurrentUser());
+    }
+  }
+
+  Future<void> _runSignedInStartup() async {
+    if (_ranStartupFlow) {
+      return;
+    }
+    _ranStartupFlow = true;
+
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null || !mounted) {
+      return;
+    }
+
+    final DocumentReference<Map<String, dynamic>> userRef = FirebaseFirestore
+        .instance
+        .collection('users')
+        .doc(user.uid);
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await userRef.get();
+    final Map<String, dynamic> userData =
+        snapshot.data() ?? <String, dynamic>{};
+    final bool disclosureAccepted =
+        userData['backgroundLocationDisclosureAcceptedAt'] != null;
+
+    if (!disclosureAccepted && mounted) {
+      final bool accepted = await _showBackgroundLocationDisclosure(context);
+      if (accepted) {
+        await userRef.set(<String, Object?>{
+          'backgroundLocationDisclosureAcceptedAt':
+              FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        if (mounted) {
+          await _requestLocationPermissionFlow(context);
+        }
+      }
+    }
+
+    await BackgroundLocationService.instance.syncForCurrentUser();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,10 +155,98 @@ class _AuthGate extends StatelessWidget {
         }
 
         if (snapshot.hasData) {
+          unawaited(_runSignedInStartup());
           return const MyHomePage(title: 'Home');
         }
 
+        _ranStartupFlow = false;
+        unawaited(BackgroundLocationService.instance.stop());
         return const MyLoginPage(title: 'Flutter Demo Home Page');
+      },
+    );
+  }
+}
+
+Future<bool> _showBackgroundLocationDisclosure(BuildContext context) async {
+  final bool? accepted = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (BuildContext dialogContext) {
+      return AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Allow Background Location',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        content: const Text(
+          'Blue Light collects location data to enable live location sharing '
+          'with trusted friends and nearby emergency alerts, even when the app '
+          'is closed or not in use.\n\n'
+          'This data is only used for safety features you enable in-app.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Not Now'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Continue'),
+          ),
+        ],
+      );
+    },
+  );
+  return accepted ?? false;
+}
+
+Future<void> _requestLocationPermissionFlow(BuildContext context) async {
+  LocationPermission permission = await Geolocator.checkPermission();
+  if (permission == LocationPermission.denied) {
+    permission = await Geolocator.requestPermission();
+  }
+  if (permission == LocationPermission.denied ||
+      permission == LocationPermission.deniedForever) {
+    if (!context.mounted) {
+      return;
+    }
+    showBlueLightToast(
+      context,
+      'Location permission was not granted. You can enable it later in settings.',
+    );
+    return;
+  }
+
+  if (permission != LocationPermission.always && context.mounted) {
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            'Enable "Allow all the time"',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          content: const Text(
+            'To keep live location sharing active in the background, open system '
+            'settings and set:\nPermissions -> Location -> Allow all the time.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Later'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                Geolocator.openAppSettings();
+              },
+              child: const Text('Open Settings'),
+            ),
+          ],
+        );
       },
     );
   }
@@ -112,6 +266,57 @@ class _MyLoginPageState extends State<MyLoginPage> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _errorText;
+
+  String _generateRandomUsername() {
+    const String chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    return 'user_${DateTime.now().millisecondsSinceEpoch}_${chars[DateTime.now().millisecond % chars.length]}';
+  }
+
+  Future<void> _ensureUserProfileDocument(User user) async {
+    final DocumentReference<Map<String, dynamic>> ref = FirebaseFirestore
+        .instance
+        .collection('users')
+        .doc(user.uid);
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await ref.get();
+    final Map<String, dynamic> existing =
+        snapshot.data() ?? <String, dynamic>{};
+    final Map<String, Object?> patch = <String, Object?>{};
+
+    if (!snapshot.exists) {
+      patch['createdAt'] = FieldValue.serverTimestamp();
+    }
+
+    final String email = (existing['email'] as String?)?.trim() ?? '';
+    final String? authEmail = user.email?.trim();
+    if (email.isEmpty && authEmail != null && authEmail.isNotEmpty) {
+      patch['email'] = authEmail;
+    }
+
+    final String username = (existing['username'] as String?)?.trim() ?? '';
+    if (username.isEmpty) {
+      patch['username'] = _generateRandomUsername();
+    }
+
+    if (existing['photoUrl'] == null) {
+      patch['photoUrl'] = '';
+    }
+    if (existing['locationTrackingEnabled'] == null) {
+      patch['locationTrackingEnabled'] = false;
+    }
+    if (existing['friendIds'] == null) {
+      patch['friendIds'] = <String>[];
+    }
+    if (existing['trustedContactIds'] == null) {
+      patch['trustedContactIds'] = <String>[];
+    }
+    if (existing['trustedContactEmails'] == null) {
+      patch['trustedContactEmails'] = <String>[];
+    }
+
+    if (patch.isNotEmpty) {
+      await ref.set(patch, SetOptions(merge: true));
+    }
+  }
 
   @override
   void dispose() {
@@ -137,10 +342,16 @@ class _MyLoginPageState extends State<MyLoginPage> {
     });
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final UserCredential credential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password);
+      final User? user = credential.user;
+      if (user == null) {
+        setState(() {
+          _errorText = 'Login failed. Please try again.';
+        });
+        return;
+      }
+      await _ensureUserProfileDocument(user);
 
       if (!mounted) {
         return;
@@ -156,7 +367,8 @@ class _MyLoginPageState extends State<MyLoginPage> {
       setState(() {
         if (e.code == 'wrong-password') {
           _errorText = 'Password incorrect.';
-        } else if (e.code == 'invalid-credential' || e.code == 'user-not-found') {
+        } else if (e.code == 'invalid-credential' ||
+            e.code == 'user-not-found') {
           _errorText = 'Email or password is incorrect.';
         } else {
           _errorText = e.message ?? 'Unable to log in right now.';
@@ -231,137 +443,134 @@ class _MyLoginPageState extends State<MyLoginPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(22),
                     child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      blueLightBrandMark(
-                        size: 58,
-                        iconColor: colors.primary,
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Welcome!',
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Sign In.',
-                        style: TextStyle(color: Colors.grey.shade700),
-                      ),
-                      const SizedBox(height: 20),
-                      TextField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: InputDecoration(
-                          labelText: 'Email',
-                          prefixIcon: const Icon(Icons.email_outlined),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _passwordController,
-                        obscureText: true,
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                      ),
-                      if (_errorText != null) ...<Widget>[
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        blueLightBrandMark(size: 58, iconColor: colors.primary),
                         const SizedBox(height: 12),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.red.shade50,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            _errorText!,
-                            style: const TextStyle(color: Colors.red),
+                        const Text(
+                          'Welcome!',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ],
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: <Widget>[
-                          TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute<SignUpPage>(
-                                  builder: (BuildContext context) =>
-                                      const SignUpPage(),
-                                ),
-                              );
-                            },
-                            child: Text(
-                              'Create Account',
-                              style: TextStyle(color: colors.primary),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Sign In.',
+                          style: TextStyle(color: Colors.grey.shade700),
+                        ),
+                        const SizedBox(height: 20),
+                        TextField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: InputDecoration(
+                            labelText: 'Email',
+                            prefixIcon: const Icon(Icons.email_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
                             ),
                           ),
-                          TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute<ForgotPasswordPage>(
-                                  builder: (BuildContext context) =>
-                                      const ForgotPasswordPage(),
-                                ),
-                              );
-                            },
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          decoration: InputDecoration(
+                            labelText: 'Password',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                        if (_errorText != null) ...<Widget>[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                             child: Text(
-                              'Forgot Password?',
-                              style: TextStyle(color: colors.primary),
+                              _errorText!,
+                              style: const TextStyle(color: Colors.red),
                             ),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: colors.primary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                        const SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: <Widget>[
+                            TextButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute<SignUpPage>(
+                                    builder: (BuildContext context) =>
+                                        const SignUpPage(),
+                                  ),
+                                );
+                              },
+                              child: Text(
+                                'Create Account',
+                                style: TextStyle(color: colors.primary),
+                              ),
                             ),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          onPressed: _isLoading ? null : _login,
-                          child: _isLoading
-                              ? const SizedBox(
-                                  height: 18,
-                                  width: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
+                            TextButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute<ForgotPasswordPage>(
+                                    builder: (BuildContext context) =>
+                                        const ForgotPasswordPage(),
                                   ),
-                                )
-                              : const Text(
-                                  'Login',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
+                                );
+                              },
+                              child: Text(
+                                'Forgot Password?',
+                                style: TextStyle(color: colors.primary),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: colors.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            onPressed: _isLoading ? null : _login,
+                            child: _isLoading
+                                ? const SizedBox(
+                                    height: 18,
+                                    width: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Login',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
           ),
         ],
       ),

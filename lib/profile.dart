@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:async';
 
 import 'package:blue_light/friends.dart';
 import 'package:blue_light/home.dart';
@@ -10,8 +11,11 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:blue_light/ui/emergency_alerts.dart';
+import 'package:blue_light/services/background_location_service.dart';
 import 'package:blue_light/ui/shell_chrome.dart';
+import 'package:blue_light/utils/user_display.dart';
 
 class _ProfileFriendOption {
   const _ProfileFriendOption({
@@ -37,12 +41,19 @@ class MyProfilePage extends StatefulWidget {
 }
 
 class _MyProfilePageState extends State<MyProfilePage> {
+  static final Uri _accountDeletionRequestUri = Uri.parse(
+    'https://docs.google.com/forms/d/e/1FAIpQLScLkY_ki2lvyftlialTGPcEg5RnLMd7oa8FtKUupMeUqezvRA/viewform?usp=dialog',
+  );
+
   final TextEditingController _usernameController = TextEditingController();
 
   bool _isLoading = true;
   bool _isSaving = false;
   String _photoUrl = '';
-  bool _locationTrackingEnabled = true;
+  bool _locationTrackingEnabled = false;
+  bool _hasAlwaysLocationPermission = false;
+  bool _locationServicesEnabled = false;
+  DateTime? _lastLocationUpdatedAt;
   double _nearbyAlertRadiusMiles = 5.0;
   Set<String> _trustedContactIds = <String>{};
 
@@ -52,6 +63,7 @@ class _MyProfilePageState extends State<MyProfilePage> {
   void initState() {
     super.initState();
     _loadProfile();
+    unawaited(_refreshBackgroundStatus());
   }
 
   @override
@@ -81,37 +93,91 @@ class _MyProfilePageState extends State<MyProfilePage> {
       return;
     }
 
-    final DocumentReference<Map<String, dynamic>> ref =
-        FirebaseFirestore.instance.collection('users').doc(user.uid);
-    final DocumentSnapshot<Map<String, dynamic>> snapshot = await ref.get();
+    final DocumentReference<Map<String, dynamic>> ref = FirebaseFirestore
+        .instance
+        .collection('users')
+        .doc(user.uid);
+    DocumentSnapshot<Map<String, dynamic>> snapshot;
+    try {
+      snapshot = await ref.get().timeout(const Duration(seconds: 8));
+    } on TimeoutException {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        showBlueLightToast(
+          context,
+          'Profile is taking too long to load. Check connection and try again.',
+        );
+      }
+      return;
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        showBlueLightToast(
+          context,
+          'Could not load profile right now. Please try again.',
+        );
+      }
+      return;
+    }
 
     if (!snapshot.exists) {
       final String username = _generateRandomUsername();
-      await ref.set(<String, Object?>{
-        'email': user.email ?? '',
-        'username': username,
-        'photoUrl': '',
-        'trustedContactEmails': <String>[],
-        'trustedContactIds': <String>[],
-        'nearbyAlertRadiusMiles': 5.0,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      try {
+        await ref
+            .set(<String, Object?>{
+              'email': user.email ?? '',
+              'username': username,
+              'photoUrl': '',
+              'trustedContactEmails': <String>[],
+              'trustedContactIds': <String>[],
+              'nearbyAlertRadiusMiles': 5.0,
+              'createdAt': FieldValue.serverTimestamp(),
+            })
+            .timeout(const Duration(seconds: 8));
+      } on TimeoutException {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+          showBlueLightToast(
+            context,
+            'Creating your profile took too long. Please try again.',
+          );
+        }
+        return;
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+          showBlueLightToast(
+            context,
+            'Could not create profile right now. Please try again.',
+          );
+        }
+        return;
+      }
       _usernameController.text = username;
       _trustedContactIds = <String>{};
       _photoUrl = '';
-      _locationTrackingEnabled = true;
+      _locationTrackingEnabled = false;
       _nearbyAlertRadiusMiles = 5.0;
     } else {
       final Map<String, dynamic> data = snapshot.data()!;
       final String username = (data['username'] as String?)?.trim() ?? '';
-      _usernameController.text =
-          username.isEmpty ? _generateRandomUsername() : username;
+      _usernameController.text = username.isEmpty
+          ? _generateRandomUsername()
+          : username;
       _trustedContactIds = ((data['trustedContactIds'] as List?) ?? <dynamic>[])
           .whereType<String>()
           .toSet();
       _photoUrl = (data['photoUrl'] as String?) ?? '';
       _locationTrackingEnabled =
-          (data['locationTrackingEnabled'] as bool?) ?? true;
+          (data['locationTrackingEnabled'] as bool?) ?? false;
       _nearbyAlertRadiusMiles =
           (data['nearbyAlertRadiusMiles'] as num?)?.toDouble() ?? 5.0;
     }
@@ -120,7 +186,65 @@ class _MyProfilePageState extends State<MyProfilePage> {
       setState(() {
         _isLoading = false;
       });
+      unawaited(_refreshBackgroundStatus());
     }
+  }
+
+  Future<void> _refreshBackgroundStatus() async {
+    final User? user = _currentUser;
+    if (user == null) {
+      return;
+    }
+
+    try {
+      final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final LocationPermission permission = await Geolocator.checkPermission();
+      final DocumentSnapshot<Map<String, dynamic>> snapshot =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get()
+              .timeout(const Duration(seconds: 5));
+      final dynamic rawUpdatedAt = snapshot.data()?['locationUpdatedAt'];
+      DateTime? lastUpdatedAt;
+      if (rawUpdatedAt is Timestamp) {
+        lastUpdatedAt = rawUpdatedAt.toDate();
+      }
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _locationServicesEnabled = serviceEnabled;
+        _hasAlwaysLocationPermission = permission == LocationPermission.always;
+        _lastLocationUpdatedAt = lastUpdatedAt;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _hasAlwaysLocationPermission = false;
+      });
+    }
+  }
+
+  String _lastLocationUpdatedLabel() {
+    final DateTime? last = _lastLocationUpdatedAt;
+    if (last == null) {
+      return 'No recent update yet';
+    }
+    final Duration diff = DateTime.now().difference(last);
+    if (diff.inMinutes < 1) {
+      return 'Updated just now';
+    }
+    if (diff.inHours < 1) {
+      return 'Updated ${diff.inMinutes} min ago';
+    }
+    if (diff.inDays < 1) {
+      return 'Updated ${diff.inHours} hr ago';
+    }
+    return 'Updated ${diff.inDays} day(s) ago';
   }
 
   Future<void> _saveUsername() async {
@@ -139,35 +263,46 @@ class _MyProfilePageState extends State<MyProfilePage> {
       _isSaving = true;
     });
 
-    final List<_ProfileFriendOption> friends = await _fetchFriendOptions();
-    final Map<String, _ProfileFriendOption> friendById = <String, _ProfileFriendOption>{
-      for (final _ProfileFriendOption f in friends) f.uid: f,
-    };
-    final List<String> trustedEmails = _trustedContactIds
-        .map((String id) => friendById[id]?.email ?? '')
-        .where((String email) => email.isNotEmpty)
-        .toSet()
-        .toList();
+    try {
+      final List<_ProfileFriendOption> friends = await _fetchFriendOptions();
+      final Map<String, _ProfileFriendOption> friendById =
+          <String, _ProfileFriendOption>{
+            for (final _ProfileFriendOption f in friends) f.uid: f,
+          };
+      final List<String> trustedEmails = _trustedContactIds
+          .map((String id) => friendById[id]?.email ?? '')
+          .map((String email) => email.trim())
+          .where((String email) => email.isNotEmpty)
+          .toSet()
+          .toList();
 
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
-      <String, Object?>{
-        'username': username,
-        'trustedContactIds': _trustedContactIds.toList(),
-        'trustedContactEmails': trustedEmails,
-        'nearbyAlertRadiusMiles': _nearbyAlertRadiusMiles,
-      },
-      SetOptions(merge: true),
-    );
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set(<String, Object?>{
+            'username': username,
+            'trustedContactIds': _trustedContactIds.toList(),
+            'trustedContactEmails': trustedEmails,
+            'nearbyAlertRadiusMiles': _nearbyAlertRadiusMiles,
+          }, SetOptions(merge: true));
 
-    if (!mounted) {
-      return;
+      if (mounted) {
+        showBlueLightToast(context, 'Profile updated.');
+      }
+    } catch (_) {
+      if (mounted) {
+        showBlueLightToast(
+          context,
+          'Could not save profile right now. Please try again.',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
     }
-
-    setState(() {
-      _isSaving = false;
-    });
-
-    showBlueLightToast(context, 'Profile updated.');
   }
 
   Future<void> _setLocationTrackingEnabled(bool enabled) async {
@@ -176,16 +311,124 @@ class _MyProfilePageState extends State<MyProfilePage> {
       return;
     }
 
+    if (enabled) {
+      final bool accepted = await _confirmBackgroundLocationDisclosure();
+      if (!accepted) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _locationTrackingEnabled = false;
+        });
+        return;
+      }
+
+      final bool granted = await _ensureBackgroundPermission();
+      if (!granted) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _locationTrackingEnabled = false;
+        });
+        return;
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _locationTrackingEnabled = enabled;
     });
 
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
-      <String, Object?>{
-        'locationTrackingEnabled': enabled,
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .set(<String, Object?>{
+          'locationTrackingEnabled': enabled,
+          if (enabled)
+            'backgroundLocationDisclosureAcceptedAt':
+                FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+    if (enabled) {
+      await BackgroundLocationService.instance.syncForCurrentUser();
+    } else {
+      await BackgroundLocationService.instance.stop();
+    }
+    await _refreshBackgroundStatus();
+  }
+
+  Future<bool> _confirmBackgroundLocationDisclosure() async {
+    final bool? accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            'Allow Background Location',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          content: const Text(
+            'Blue Light collects location data to enable live location sharing '
+            'with trusted friends and nearby emergency alerts, even when the app '
+            'is closed or not in use.\n\n'
+            'This data is only used for safety features you enable in-app.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Not Now'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Continue'),
+            ),
+          ],
+        );
       },
-      SetOptions(merge: true),
     );
+    return accepted ?? false;
+  }
+
+  Future<bool> _ensureBackgroundPermission() async {
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      if (!mounted) {
+        return false;
+      }
+      showBlueLightToast(
+        context,
+        'Location permission is required for live location sharing.',
+      );
+      return false;
+    }
+
+    if (permission != LocationPermission.always) {
+      if (!mounted) {
+        return false;
+      }
+      await _openBackgroundLocationGuide();
+      permission = await Geolocator.checkPermission();
+      if (permission != LocationPermission.always) {
+        showBlueLightToast(
+          context,
+          'Please enable "Allow all the time" to keep tracking active in background.',
+        );
+        return false;
+      }
+    }
+
+    return true;
   }
 
   Future<void> _openBackgroundLocationGuide() async {
@@ -200,7 +443,9 @@ class _MyProfilePageState extends State<MyProfilePage> {
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: const Text(
             'Enable Always-On Location',
             style: TextStyle(fontWeight: FontWeight.w700),
@@ -226,6 +471,7 @@ class _MyProfilePageState extends State<MyProfilePage> {
         );
       },
     );
+    await _refreshBackgroundStatus();
   }
 
   Future<List<_ProfileFriendOption>> _fetchFriendOptions() async {
@@ -234,12 +480,15 @@ class _MyProfilePageState extends State<MyProfilePage> {
       return <_ProfileFriendOption>[];
     }
     final FirebaseFirestore firestore = FirebaseFirestore.instance;
-    final DocumentSnapshot<Map<String, dynamic>> me =
-        await firestore.collection('users').doc(user.uid).get();
-    final List<String> friendIds = ((me.data()?['friendIds'] as List?) ?? <dynamic>[])
-        .whereType<String>()
-        .where((String id) => id != user.uid)
-        .toList();
+    final DocumentSnapshot<Map<String, dynamic>> me = await firestore
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    final List<String> friendIds =
+        ((me.data()?['friendIds'] as List?) ?? <dynamic>[])
+            .whereType<String>()
+            .where((String id) => id != user.uid)
+            .toList();
 
     final List<_ProfileFriendOption> out = <_ProfileFriendOption>[];
     if (friendIds.isNotEmpty) {
@@ -252,14 +501,13 @@ class _MyProfilePageState extends State<MyProfilePage> {
             .collection('users')
             .where(FieldPath.documentId, whereIn: chunk)
             .get();
-        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in snapshot.docs) {
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in snapshot.docs) {
           final Map<String, dynamic> data = doc.data();
           out.add(
             _ProfileFriendOption(
               uid: doc.id,
-              username: (data['username'] as String?)?.trim().isNotEmpty == true
-                  ? (data['username'] as String).trim()
-                  : 'User',
+              username: resolveDisplayName(data, userId: doc.id),
               email: (data['email'] as String?) ?? '',
               photoUrl: (data['photoUrl'] as String?) ?? '',
             ),
@@ -267,9 +515,12 @@ class _MyProfilePageState extends State<MyProfilePage> {
         }
       }
     } else {
-      final QuerySnapshot<Map<String, dynamic>> snapshot =
-          await firestore.collection('users').limit(100).get();
-      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in snapshot.docs) {
+      final QuerySnapshot<Map<String, dynamic>> snapshot = await firestore
+          .collection('users')
+          .limit(100)
+          .get();
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in snapshot.docs) {
         if (doc.id == user.uid) {
           continue;
         }
@@ -277,16 +528,16 @@ class _MyProfilePageState extends State<MyProfilePage> {
         out.add(
           _ProfileFriendOption(
             uid: doc.id,
-            username: (data['username'] as String?)?.trim().isNotEmpty == true
-                ? (data['username'] as String).trim()
-                : 'User',
+            username: resolveDisplayName(data, userId: doc.id),
             email: (data['email'] as String?) ?? '',
             photoUrl: (data['photoUrl'] as String?) ?? '',
           ),
         );
       }
     }
-    out.sort((a, b) => a.username.toLowerCase().compareTo(b.username.toLowerCase()));
+    out.sort(
+      (a, b) => a.username.toLowerCase().compareTo(b.username.toLowerCase()),
+    );
     return out;
   }
 
@@ -311,8 +562,10 @@ class _MyProfilePageState extends State<MyProfilePage> {
             final List<_ProfileFriendOption> otherFriends = friends
                 .where((f) => !selected.contains(f.uid))
                 .toList();
-            final List<_ProfileFriendOption> ordered =
-                <_ProfileFriendOption>[...selectedFriends, ...otherFriends];
+            final List<_ProfileFriendOption> ordered = <_ProfileFriendOption>[
+              ...selectedFriends,
+              ...otherFriends,
+            ];
 
             Future<void> saveContacts() async {
               setStateDialog(() {
@@ -326,13 +579,13 @@ class _MyProfilePageState extends State<MyProfilePage> {
                     .where((e) => e.isNotEmpty)
                     .toSet()
                     .toList();
-                await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
-                  <String, Object?>{
-                    'trustedContactIds': selected.toList(),
-                    'trustedContactEmails': selectedEmails,
-                  },
-                  SetOptions(merge: true),
-                );
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.uid)
+                    .set(<String, Object?>{
+                      'trustedContactIds': selected.toList(),
+                      'trustedContactEmails': selectedEmails,
+                    }, SetOptions(merge: true));
                 if (!mounted) {
                   return;
                 }
@@ -385,7 +638,9 @@ class _MyProfilePageState extends State<MyProfilePage> {
                           itemCount: ordered.length,
                           itemBuilder: (BuildContext context, int index) {
                             final _ProfileFriendOption friend = ordered[index];
-                            final bool isSelected = selected.contains(friend.uid);
+                            final bool isSelected = selected.contains(
+                              friend.uid,
+                            );
                             return ListTile(
                               contentPadding: EdgeInsets.zero,
                               onTap: () {
@@ -413,7 +668,9 @@ class _MyProfilePageState extends State<MyProfilePage> {
                               ),
                               title: Text(
                                 friend.username,
-                                style: const TextStyle(fontWeight: FontWeight.w600),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                               subtitle: friend.email.isEmpty
                                   ? null
@@ -490,15 +747,14 @@ class _MyProfilePageState extends State<MyProfilePage> {
       _isSaving = true;
     });
 
-    final Reference ref =
-        FirebaseStorage.instance.ref('profile_photos/${user.uid}.jpg');
+    final Reference ref = FirebaseStorage.instance.ref(
+      'profile_photos/${user.uid}.jpg',
+    );
     await ref.putData(await file.readAsBytes());
     final String downloadUrl = await ref.getDownloadURL();
 
     await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
-      <String, Object?>{
-        'photoUrl': downloadUrl,
-      },
+      <String, Object?>{'photoUrl': downloadUrl},
       SetOptions(merge: true),
     );
 
@@ -551,6 +807,19 @@ class _MyProfilePageState extends State<MyProfilePage> {
     Navigator.of(
       context,
     ).pushNamedAndRemoveUntil('/login', (Route<dynamic> route) => false);
+  }
+
+  Future<void> _openAccountDeletionRequestForm() async {
+    final bool launched = await launchUrl(
+      _accountDeletionRequestUri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched && mounted) {
+      showBlueLightToast(
+        context,
+        'Unable to open account deletion request form right now.',
+      );
+    }
   }
 
   @override
@@ -610,10 +879,7 @@ class _MyProfilePageState extends State<MyProfilePage> {
           : Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  colors: <Color>[
-                    Color(0xFFE6F5FF),
-                    Color(0xFFFDFEFF),
-                  ],
+                  colors: <Color>[Color(0xFFE6F5FF), Color(0xFFFDFEFF)],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
@@ -703,7 +969,9 @@ class _MyProfilePageState extends State<MyProfilePage> {
                                 decoration: BoxDecoration(
                                   color: Colors.blueGrey.shade50,
                                   borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: Colors.blue.shade100),
+                                  border: Border.all(
+                                    color: Colors.blue.shade100,
+                                  ),
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -725,12 +993,20 @@ class _MyProfilePageState extends State<MyProfilePage> {
                                       width: double.infinity,
                                       child: OutlinedButton.icon(
                                         onPressed: _openTrustedContactsPicker,
-                                        icon: const Icon(Icons.group_add_rounded),
-                                        label: const Text('Manage Personal Contacts'),
+                                        icon: const Icon(
+                                          Icons.group_add_rounded,
+                                        ),
+                                        label: const Text(
+                                          'Manage Personal Contacts',
+                                        ),
                                         style: OutlinedButton.styleFrom(
-                                          side: const BorderSide(color: Colors.lightBlue),
+                                          side: const BorderSide(
+                                            color: Colors.lightBlue,
+                                          ),
                                           shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(12),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -745,7 +1021,9 @@ class _MyProfilePageState extends State<MyProfilePage> {
                                 decoration: BoxDecoration(
                                   color: Colors.blueGrey.shade50,
                                   borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: Colors.blue.shade100),
+                                  border: Border.all(
+                                    color: Colors.blue.shade100,
+                                  ),
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -767,7 +1045,8 @@ class _MyProfilePageState extends State<MyProfilePage> {
                                       min: 1,
                                       max: 25,
                                       divisions: 24,
-                                      label: '${_nearbyAlertRadiusMiles.toStringAsFixed(0)} mi',
+                                      label:
+                                          '${_nearbyAlertRadiusMiles.toStringAsFixed(0)} mi',
                                       onChanged: (double value) {
                                         setState(() {
                                           _nearbyAlertRadiusMiles = value;
@@ -784,7 +1063,9 @@ class _MyProfilePageState extends State<MyProfilePage> {
                                 decoration: BoxDecoration(
                                   color: Colors.blueGrey.shade50,
                                   borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: Colors.blue.shade100),
+                                  border: Border.all(
+                                    color: Colors.blue.shade100,
+                                  ),
                                 ),
                                 child: Row(
                                   children: <Widget>[
@@ -833,12 +1114,64 @@ class _MyProfilePageState extends State<MyProfilePage> {
                                 ),
                               ),
                               const SizedBox(height: 8),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: Colors.blueGrey.shade50,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: Colors.blue.shade100,
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    const Text(
+                                      'Background Tracking Status',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Permission: ${_hasAlwaysLocationPermission ? "Allow all the time" : "Not fully enabled"}',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Location services: ${_locationServicesEnabled ? "On" : "Off"}',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _lastLocationUpdatedLabel(),
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: TextButton(
+                                        onPressed: _refreshBackgroundStatus,
+                                        child: const Text('Refresh Status'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
                               Align(
                                 alignment: Alignment.centerRight,
                                 child: TextButton.icon(
                                   onPressed: _openBackgroundLocationGuide,
-                                  icon: const Icon(Icons.settings_rounded, size: 18),
-                                  label: const Text('Enable “Allow all the time”'),
+                                  icon: const Icon(
+                                    Icons.settings_rounded,
+                                    size: 18,
+                                  ),
+                                  label: const Text(
+                                    'Enable “Allow all the time”',
+                                  ),
                                   style: TextButton.styleFrom(
                                     foregroundColor: const Color(0xFF176EC2),
                                   ),
@@ -877,6 +1210,15 @@ class _MyProfilePageState extends State<MyProfilePage> {
                                 ),
                               ),
                               const SizedBox(height: 10),
+                              TextButton.icon(
+                                onPressed: _openAccountDeletionRequestForm,
+                                icon: const Icon(Icons.delete_forever_outlined),
+                                label: const Text('Request Account Deletion'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: const Color(0xFFB23A3A),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
                               TextButton(
                                 onPressed: _logout,
                                 child: const Text(

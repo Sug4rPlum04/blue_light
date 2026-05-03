@@ -10,6 +10,7 @@ import 'package:blue_light/ui/shell_chrome.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:blue_light/utils/user_display.dart';
 
 class MyFriendsPage extends StatefulWidget {
   const MyFriendsPage({super.key, required this.title});
@@ -56,7 +57,8 @@ class _MyFriendsPageState extends State<MyFriendsPage> {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (BuildContext context) => const MyHomePage(title: 'Home'),
+                builder: (BuildContext context) =>
+                    const MyHomePage(title: 'Home'),
               ),
             );
             return;
@@ -65,7 +67,8 @@ class _MyFriendsPageState extends State<MyFriendsPage> {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (BuildContext context) => const MyMapPage(title: 'Map'),
+                builder: (BuildContext context) =>
+                    const MyMapPage(title: 'Map'),
               ),
             );
             return;
@@ -140,58 +143,85 @@ class _MyFriendsPageState extends State<MyFriendsPage> {
                           .collection('users')
                           .doc(user.uid)
                           .snapshots(),
-                      builder: (
-                        BuildContext context,
-                        AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>>
-                            snapshot,
-                      ) {
-                        final Set<String> friendIds =
-                            ((snapshot.data?.data()?['friendIds'] as List?) ??
-                                    <dynamic>[])
-                                .whereType<String>()
-                                .toSet();
-                        if (friendIds.isEmpty) {
-                          return const Center(
-                            child: Text('No friends yet. Add people to get started.'),
-                          );
-                        }
-                        return FutureBuilder<List<_FriendItem>>(
-                          future: _loadFriends(friendIds),
-                          builder: (
+                      builder:
+                          (
                             BuildContext context,
-                            AsyncSnapshot<List<_FriendItem>> listSnapshot,
+                            AsyncSnapshot<
+                              DocumentSnapshot<Map<String, dynamic>>
+                            >
+                            snapshot,
                           ) {
-                            if (listSnapshot.connectionState ==
-                                    ConnectionState.waiting &&
-                                !listSnapshot.hasData) {
+                            if (snapshot.hasError) {
                               return const Center(
-                                child: CircularProgressIndicator(),
+                                child: Text(
+                                  'Could not load friends right now. Please try again.',
+                                ),
                               );
                             }
-                            final List<_FriendItem> allFriends =
-                                listSnapshot.data ?? <_FriendItem>[];
-                            final String query = _searchText.trim().toLowerCase();
-                            final List<_FriendItem> filteredFriends = allFriends
-                                .where(( _FriendItem item) {
-                                  return query.isEmpty ||
-                                      item.name.toLowerCase().contains(query);
-                                })
-                                .toList();
-                            if (filteredFriends.isEmpty) {
+                            final Set<String> friendIds =
+                                ((snapshot.data?.data()?['friendIds']
+                                            as List?) ??
+                                        <dynamic>[])
+                                    .whereType<String>()
+                                    .toSet();
+                            if (friendIds.isEmpty) {
                               return const Center(
-                                child: Text('No matching friends.'),
+                                child: Text(
+                                  'No friends yet. Add people to get started.',
+                                ),
                               );
                             }
-                            return ListView.builder(
-                              itemCount: filteredFriends.length,
-                              itemBuilder: (BuildContext context, int index) {
-                                final _FriendItem friend = filteredFriends[index];
-                                return _friendRow(friend);
-                              },
+                            return FutureBuilder<List<_FriendItem>>(
+                              future: _loadFriends(friendIds),
+                              builder:
+                                  (
+                                    BuildContext context,
+                                    AsyncSnapshot<List<_FriendItem>>
+                                    listSnapshot,
+                                  ) {
+                                    if (listSnapshot.hasError) {
+                                      return const Center(
+                                        child: Text(
+                                          'Could not load friend profiles right now.',
+                                        ),
+                                      );
+                                    }
+                                    if (listSnapshot.connectionState ==
+                                            ConnectionState.waiting &&
+                                        !listSnapshot.hasData) {
+                                      return const Center(
+                                        child: CircularProgressIndicator(),
+                                      );
+                                    }
+                                    final List<_FriendItem> allFriends =
+                                        listSnapshot.data ?? <_FriendItem>[];
+                                    final String query = _searchText
+                                        .trim()
+                                        .toLowerCase();
+                                    final List<_FriendItem> filteredFriends =
+                                        allFriends.where((_FriendItem item) {
+                                          return query.isEmpty ||
+                                              item.name.toLowerCase().contains(
+                                                query,
+                                              );
+                                        }).toList();
+                                    if (filteredFriends.isEmpty) {
+                                      return const Center(
+                                        child: Text('No matching friends.'),
+                                      );
+                                    }
+                                    return ListView.builder(
+                                      itemCount: filteredFriends.length,
+                                      itemBuilder:
+                                          (BuildContext context, int index) {
+                                            final _FriendItem friend =
+                                                filteredFriends[index];
+                                            return _friendRow(friend);
+                                          },
+                                    );
+                                  },
                             );
                           },
-                        );
-                      },
                     ),
             ),
           ],
@@ -233,8 +263,9 @@ class _MyFriendsPageState extends State<MyFriendsPage> {
               },
               child: CircleAvatar(
                 radius: 26,
-                backgroundImage:
-                    friend.photoUrl.isNotEmpty ? NetworkImage(friend.photoUrl) : null,
+                backgroundImage: friend.photoUrl.isNotEmpty
+                    ? NetworkImage(friend.photoUrl)
+                    : null,
                 backgroundColor: Colors.grey.shade200,
                 child: friend.photoUrl.isEmpty
                     ? const Icon(Icons.person, color: Colors.white)
@@ -288,11 +319,10 @@ class _MyFriendsPageState extends State<MyFriendsPage> {
           .collection('users')
           .where(FieldPath.documentId, whereIn: chunk)
           .get();
-      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc in snapshot.docs) {
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in snapshot.docs) {
         final Map<String, dynamic> data = doc.data();
-        final String name = (data['username'] as String?)?.trim().isNotEmpty == true
-            ? (data['username'] as String).trim()
-            : ((data['email'] as String?)?.split('@').first ?? 'User');
+        final String name = resolveDisplayName(data, userId: doc.id);
         items.add(
           _FriendItem(
             uid: doc.id,
@@ -403,7 +433,9 @@ class _MyFriendsPageState extends State<MyFriendsPage> {
                             },
                             style: OutlinedButton.styleFrom(
                               side: const BorderSide(color: Color(0xFFBFC8D4)),
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
@@ -430,7 +462,9 @@ class _MyFriendsPageState extends State<MyFriendsPage> {
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFFE53935),
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),

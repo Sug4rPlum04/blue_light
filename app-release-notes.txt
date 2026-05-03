@@ -1,0 +1,9 @@
+Blue Light - Release Notes
+
+- Added map location safety improvements for more reliable live safety sharing.
+- Added a clear in-app background location disclosure before enabling always-on tracking.
+- Improved location permission flow with guidance for enabling "Allow all the time" on Android.
+- Added background location sync support to keep safety location updates active when the app is minimized.
+- Added Android foreground location service support for continuous safety tracking behavior.
+- Improved map handling when tracking settings cannot be loaded (clear retry/error state instead of false off-state).
+- Fixed map state sync so Location Tracking ON in Profile is correctly reflected in Map.

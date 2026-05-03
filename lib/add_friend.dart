@@ -6,6 +6,7 @@ import 'package:blue_light/ui/user_profile_preview.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:blue_light/utils/user_display.dart';
 
 class MyAddFriendsPage extends StatefulWidget {
   const MyAddFriendsPage({super.key, required this.title});
@@ -89,81 +90,85 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
           ),
           child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: requestsStream,
-            builder: (
-              BuildContext context,
-              AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snapshot,
-            ) {
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  !snapshot.hasData) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Center(child: CircularProgressIndicator()),
-                );
-              }
-              final List<QueryDocumentSnapshot<Map<String, dynamic>>> requests =
-                  snapshot.data?.docs ??
+            builder:
+                (
+                  BuildContext context,
+                  AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snapshot,
+                ) {
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      !snapshot.hasData) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  final List<QueryDocumentSnapshot<Map<String, dynamic>>>
+                  requests =
+                      snapshot.data?.docs ??
                       <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-              if (requests.isEmpty) {
-                return const SizedBox(
-                  height: 120,
-                  child: Center(
-                    child: Text('No friend requests right now.'),
-                  ),
-                );
-              }
-
-              final List<QueryDocumentSnapshot<Map<String, dynamic>>> visible =
-                  _showAllRequests ? requests : requests.take(3).toList();
-
-              return ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 120),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeInOut,
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: visible.length,
-                        itemBuilder: (BuildContext context, int index) {
-                          final QueryDocumentSnapshot<Map<String, dynamic>> request =
-                              visible[index];
-                          return _friendRequestRow(request);
-                        },
+                  if (requests.isEmpty) {
+                    return const SizedBox(
+                      height: 120,
+                      child: Center(
+                        child: Text('No friend requests right now.'),
                       ),
-                    ),
-                    if (requests.length > 3)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 4,
-                            ),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _showAllRequests = !_showAllRequests;
-                            });
-                          },
-                          child: Text(
-                            _showAllRequests ? 'Show less' : 'See all',
-                            style: const TextStyle(
-                              color: Colors.lightBlue,
-                              fontWeight: FontWeight.w600,
-                            ),
+                    );
+                  }
+
+                  final List<QueryDocumentSnapshot<Map<String, dynamic>>>
+                  visible = _showAllRequests
+                      ? requests
+                      : requests.take(3).toList();
+
+                  return ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 120),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeInOut,
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: visible.length,
+                            itemBuilder: (BuildContext context, int index) {
+                              final QueryDocumentSnapshot<Map<String, dynamic>>
+                              request = visible[index];
+                              return _friendRequestRow(request);
+                            },
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              );
-            },
+                        if (requests.length > 3)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 4,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _showAllRequests = !_showAllRequests;
+                                });
+                              },
+                              child: Text(
+                                _showAllRequests ? 'Show less' : 'See all',
+                                style: const TextStyle(
+                                  color: Colors.lightBlue,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
           ),
         ),
         const Positioned(
@@ -174,10 +179,7 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
               padding: EdgeInsets.symmetric(horizontal: 10),
               child: Text(
                 'Friend Requests',
-                style: TextStyle(
-                  fontSize: 25,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -193,181 +195,188 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
     final String fromUserId = requestDoc.id;
     final String fallbackName =
         (data['fromUsername'] as String?)?.trim().isNotEmpty == true
-            ? (data['fromUsername'] as String).trim()
-            : 'User';
-    final String fallbackPhoto = (data['fromPhotoUrl'] as String?)?.trim() ?? '';
+        ? (data['fromUsername'] as String).trim()
+        : 'User';
+    final String fallbackPhoto =
+        (data['fromPhotoUrl'] as String?)?.trim() ?? '';
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('users')
           .doc(fromUserId)
           .snapshots(),
-      builder: (
-        BuildContext context,
-        AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> userSnapshot,
-      ) {
-        final Map<String, dynamic> userData =
-            userSnapshot.data?.data() ?? <String, dynamic>{};
-        final String name =
-            (userData['username'] as String?)?.trim().isNotEmpty == true
+      builder:
+          (
+            BuildContext context,
+            AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> userSnapshot,
+          ) {
+            final Map<String, dynamic> userData =
+                userSnapshot.data?.data() ?? <String, dynamic>{};
+            final String name =
+                (userData['username'] as String?)?.trim().isNotEmpty == true
                 ? (userData['username'] as String).trim()
-                : fallbackName;
-        final String photo =
-            (userData['photoUrl'] as String?)?.trim().isNotEmpty == true
+                : fallbackName.trim().isNotEmpty
+                ? fallbackName
+                : resolveDisplayName(userData, userId: fromUserId);
+            final String photo =
+                (userData['photoUrl'] as String?)?.trim().isNotEmpty == true
                 ? (userData['photoUrl'] as String).trim()
                 : fallbackPhoto;
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(
-                color: Colors.black12,
-                blurRadius: 6,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              GestureDetector(
-                onTap: () async {
-                  try {
-                    await showUserProfilePreviewDialog(
-                      context: context,
-                      targetUserId: fromUserId,
-                      fallbackUsername: name,
-                      fallbackPhotoUrl: photo,
-                    );
-                  } catch (_) {}
-                },
-                child: CircleAvatar(
-                  radius: 26,
-                  backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
-                  backgroundColor: Colors.grey.shade200,
-                  child: photo.isEmpty
-                      ? const Icon(Icons.person, color: Colors.white)
-                      : null,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FutureBuilder<int>(
-                  future: _mutualCountWith(fromUserId),
-                  builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
-                    final int mutualCount = snapshot.data ?? 0;
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          name,
-                          maxLines: 1,
-                          softWrap: false,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '$mutualCount mutuals',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  SizedBox(
-                    width: 90,
-                    height: 34,
-                    child: ElevatedButton(
-                      onPressed: _isUserBusy(fromUserId)
-                          ? null
-                          : () async {
-                              await _runFriendActionForUser(fromUserId, () {
-                                return _friendService.acceptFriendRequest(
-                                  fromUserId: fromUserId,
-                                );
-                              });
-                            },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.lightBlue,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size(0, 0),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          Icon(Icons.add, size: 14),
-                          SizedBox(width: 3),
-                          Text(
-                            'Add',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 94,
-                    height: 34,
-                    child: OutlinedButton(
-                      onPressed: _isUserBusy(fromUserId)
-                          ? null
-                          : () async {
-                              await _runFriendActionForUser(fromUserId, () {
-                                return _friendService.declineFriendRequest(
-                                  fromUserId: fromUserId,
-                                );
-                              });
-                            },
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Colors.grey),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      child: const Text(
-                        'Delete',
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.fade,
-                        style: TextStyle(
-                          color: Colors.black87,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: const <BoxShadow>[
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 6,
+                    offset: Offset(0, 2),
                   ),
                 ],
               ),
-            ],
-          ),
-        );
-      },
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: <Widget>[
+                  GestureDetector(
+                    onTap: () async {
+                      try {
+                        await showUserProfilePreviewDialog(
+                          context: context,
+                          targetUserId: fromUserId,
+                          fallbackUsername: name,
+                          fallbackPhotoUrl: photo,
+                        );
+                      } catch (_) {}
+                    },
+                    child: CircleAvatar(
+                      radius: 26,
+                      backgroundImage: photo.isNotEmpty
+                          ? NetworkImage(photo)
+                          : null,
+                      backgroundColor: Colors.grey.shade200,
+                      child: photo.isEmpty
+                          ? const Icon(Icons.person, color: Colors.white)
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FutureBuilder<int>(
+                      future: _mutualCountWith(fromUserId),
+                      builder:
+                          (BuildContext context, AsyncSnapshot<int> snapshot) {
+                            final int mutualCount = snapshot.data ?? 0;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  name,
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '$mutualCount mutuals',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      SizedBox(
+                        width: 90,
+                        height: 34,
+                        child: ElevatedButton(
+                          onPressed: _isUserBusy(fromUserId)
+                              ? null
+                              : () async {
+                                  await _runFriendActionForUser(fromUserId, () {
+                                    return _friendService.acceptFriendRequest(
+                                      fromUserId: fromUserId,
+                                    );
+                                  });
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.lightBlue,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 0),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
+                              Icon(Icons.add, size: 14),
+                              SizedBox(width: 3),
+                              Text(
+                                'Add',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 94,
+                        height: 34,
+                        child: OutlinedButton(
+                          onPressed: _isUserBusy(fromUserId)
+                              ? null
+                              : () async {
+                                  await _runFriendActionForUser(fromUserId, () {
+                                    return _friendService.declineFriendRequest(
+                                      fromUserId: fromUserId,
+                                    );
+                                  });
+                                },
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.grey),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Text(
+                            'Delete',
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.fade,
+                            style: TextStyle(
+                              color: Colors.black87,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
     );
   }
 
@@ -378,7 +387,10 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
     }
 
     final Stream<DocumentSnapshot<Map<String, dynamic>>> meStream =
-        FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .snapshots();
     final Stream<QuerySnapshot<Map<String, dynamic>>> incomingStream =
         FirebaseFirestore.instance
             .collection('users')
@@ -436,94 +448,199 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
               const SizedBox(height: 12),
               StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                 stream: meStream,
-                builder: (
-                  BuildContext context,
-                  AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> meSnap,
-                ) {
-                  final Set<String> myFriendIds =
-                      ((meSnap.data?.data()?['friendIds'] as List?) ?? <dynamic>[])
-                          .whereType<String>()
-                          .toSet();
-
-                  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: incomingStream,
-                    builder: (
+                builder:
+                    (
                       BuildContext context,
-                      AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>>
-                          incomingSnap,
+                      AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>>
+                      meSnap,
                     ) {
-                      final Set<String> incomingIds = (incomingSnap.data?.docs ??
-                              <QueryDocumentSnapshot<Map<String, dynamic>>>[])
-                          .map((QueryDocumentSnapshot<Map<String, dynamic>> d) => d.id)
-                          .toSet();
+                      if (meSnap.hasError) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 18),
+                          child: Text(
+                            'Could not load your profile data right now.',
+                          ),
+                        );
+                      }
+                      final Set<String> myFriendIds =
+                          ((meSnap.data?.data()?['friendIds'] as List?) ??
+                                  <dynamic>[])
+                              .whereType<String>()
+                              .toSet();
 
                       return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                        stream: outgoingStream,
-                        builder: (
-                          BuildContext context,
-                          AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>>
-                              outgoingSnap,
-                        ) {
-                          final Set<String> outgoingIds =
-                              (outgoingSnap.data?.docs ??
-                                      <QueryDocumentSnapshot<Map<String, dynamic>>>[])
-                                  .map((QueryDocumentSnapshot<Map<String, dynamic>> d) {
-                            final Map<String, dynamic> data = d.data();
-                            return (data['toUserId'] as String?)?.trim() ?? d.id;
-                          }).where((String id) => id.isNotEmpty).toSet();
-
-                          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                            stream: usersStream,
-                            builder: (
+                        stream: incomingStream,
+                        builder:
+                            (
                               BuildContext context,
                               AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>>
-                                  usersSnap,
+                              incomingSnap,
                             ) {
-                              if (usersSnap.connectionState ==
-                                      ConnectionState.waiting &&
-                                  !usersSnap.hasData) {
-                                return const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 24),
-                                  child: Center(child: CircularProgressIndicator()),
-                                );
-                              }
-
-                              final List<_DiscoverUser> discoverUsers =
-                                  _buildDiscoverUsers(
-                                users: usersSnap.data?.docs ??
-                                    <QueryDocumentSnapshot<Map<String, dynamic>>>[],
-                                currentUserId: user.uid,
-                                myFriendIds: myFriendIds,
-                                incomingIds: incomingIds,
-                                outgoingIds: outgoingIds,
-                              );
-
-                              if (discoverUsers.isEmpty) {
+                              if (incomingSnap.hasError) {
                                 return const Padding(
                                   padding: EdgeInsets.symmetric(vertical: 18),
-                                  child: Text('No matching users found.'),
+                                  child: Text(
+                                    'Could not load incoming requests right now.',
+                                  ),
                                 );
                               }
+                              final Set<String> incomingIds =
+                                  (incomingSnap.data?.docs ??
+                                          <
+                                            QueryDocumentSnapshot<
+                                              Map<String, dynamic>
+                                            >
+                                          >[])
+                                      .map(
+                                        (
+                                          QueryDocumentSnapshot<
+                                            Map<String, dynamic>
+                                          >
+                                          d,
+                                        ) => d.id,
+                                      )
+                                      .toSet();
 
-                              return ListView.builder(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: discoverUsers.length > 12
-                                    ? 12
-                                    : discoverUsers.length,
-                                itemBuilder: (BuildContext context, int index) {
-                                  final _DiscoverUser person =
-                                      discoverUsers[index];
-                                  return _discoverUserRow(person);
-                                },
+                              return StreamBuilder<
+                                QuerySnapshot<Map<String, dynamic>>
+                              >(
+                                stream: outgoingStream,
+                                builder:
+                                    (
+                                      BuildContext context,
+                                      AsyncSnapshot<
+                                        QuerySnapshot<Map<String, dynamic>>
+                                      >
+                                      outgoingSnap,
+                                    ) {
+                                      if (outgoingSnap.hasError) {
+                                        return const Padding(
+                                          padding: EdgeInsets.symmetric(
+                                            vertical: 18,
+                                          ),
+                                          child: Text(
+                                            'Could not load outgoing requests right now.',
+                                          ),
+                                        );
+                                      }
+                                      final Set<String> outgoingIds =
+                                          (outgoingSnap.data?.docs ??
+                                                  <
+                                                    QueryDocumentSnapshot<
+                                                      Map<String, dynamic>
+                                                    >
+                                                  >[])
+                                              .map((
+                                                QueryDocumentSnapshot<
+                                                  Map<String, dynamic>
+                                                >
+                                                d,
+                                              ) {
+                                                final Map<String, dynamic>
+                                                data = d.data();
+                                                return (data['toUserId']
+                                                            as String?)
+                                                        ?.trim() ??
+                                                    d.id;
+                                              })
+                                              .where(
+                                                (String id) => id.isNotEmpty,
+                                              )
+                                              .toSet();
+
+                                      return StreamBuilder<
+                                        QuerySnapshot<Map<String, dynamic>>
+                                      >(
+                                        stream: usersStream,
+                                        builder:
+                                            (
+                                              BuildContext context,
+                                              AsyncSnapshot<
+                                                QuerySnapshot<
+                                                  Map<String, dynamic>
+                                                >
+                                              >
+                                              usersSnap,
+                                            ) {
+                                              if (usersSnap.hasError) {
+                                                return const Padding(
+                                                  padding: EdgeInsets.symmetric(
+                                                    vertical: 18,
+                                                  ),
+                                                  child: Text(
+                                                    'Could not load users right now. Check Firestore rules and connection.',
+                                                  ),
+                                                );
+                                              }
+                                              if (usersSnap.connectionState ==
+                                                      ConnectionState.waiting &&
+                                                  !usersSnap.hasData) {
+                                                return const Padding(
+                                                  padding: EdgeInsets.symmetric(
+                                                    vertical: 24,
+                                                  ),
+                                                  child: Center(
+                                                    child:
+                                                        CircularProgressIndicator(),
+                                                  ),
+                                                );
+                                              }
+
+                                              final List<_DiscoverUser>
+                                              discoverUsers =
+                                                  _buildDiscoverUsers(
+                                                    users:
+                                                        usersSnap.data?.docs ??
+                                                        <
+                                                          QueryDocumentSnapshot<
+                                                            Map<String, dynamic>
+                                                          >
+                                                        >[],
+                                                    currentUserId: user.uid,
+                                                    myFriendIds: myFriendIds,
+                                                    incomingIds: incomingIds,
+                                                    outgoingIds: outgoingIds,
+                                                  );
+
+                                              if (discoverUsers.isEmpty) {
+                                                return const Padding(
+                                                  padding: EdgeInsets.symmetric(
+                                                    vertical: 18,
+                                                  ),
+                                                  child: Text(
+                                                    'No matching users found.',
+                                                  ),
+                                                );
+                                              }
+
+                                              return ListView.builder(
+                                                shrinkWrap: true,
+                                                physics:
+                                                    const NeverScrollableScrollPhysics(),
+                                                itemCount:
+                                                    discoverUsers.length > 12
+                                                    ? 12
+                                                    : discoverUsers.length,
+                                                itemBuilder:
+                                                    (
+                                                      BuildContext context,
+                                                      int index,
+                                                    ) {
+                                                      final _DiscoverUser
+                                                      person =
+                                                          discoverUsers[index];
+                                                      return _discoverUserRow(
+                                                        person,
+                                                      );
+                                                    },
+                                              );
+                                            },
+                                      );
+                                    },
                               );
                             },
-                          );
-                        },
                       );
                     },
-                  );
-                },
               ),
             ],
           ),
@@ -536,10 +653,7 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
               padding: EdgeInsets.symmetric(horizontal: 10),
               child: Text(
                 'Find New Friends',
-                style: TextStyle(
-                  fontSize: 25,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -572,8 +686,9 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
             },
             child: CircleAvatar(
               radius: 22,
-              backgroundImage:
-                  person.photoUrl.isNotEmpty ? NetworkImage(person.photoUrl) : null,
+              backgroundImage: person.photoUrl.isNotEmpty
+                  ? NetworkImage(person.photoUrl)
+                  : null,
               backgroundColor: Colors.grey.shade200,
               child: person.photoUrl.isEmpty
                   ? const Icon(Icons.person, color: Colors.white)
@@ -598,10 +713,7 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
                 const SizedBox(height: 2),
                 Text(
                   '${person.mutualCount} mutuals',
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                 ),
               ],
             ),
@@ -647,76 +759,79 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
                     ),
                   )
                 : person.buttonState == _DiscoverButtonState.received
-                    ? ElevatedButton(
-                        onPressed: _isUserBusy(person.uid)
-                            ? null
-                            : () async {
-                                await _runFriendActionForUser(person.uid, () {
-                                  return _friendService.acceptFriendRequest(
-                                    fromUserId: person.uid,
-                                  );
-                                });
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.lightBlue,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(0, 0),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: const Text(
-                          'Accept',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      )
-                    : OutlinedButton(
-                        onPressed: person.buttonState == _DiscoverButtonState.sent &&
-                                !_isUserBusy(person.uid)
-                            ? () async {
-                                await _runFriendActionForUser(person.uid, () {
-                                  return _friendService.cancelFriendRequest(
-                                    toUserId: person.uid,
-                                  );
-                                });
-                              }
-                            : null,
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                            color: person.buttonState == _DiscoverButtonState.friends
-                                ? Colors.green.shade400
-                                : Colors.grey.shade400,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: Text(
-                          person.buttonState == _DiscoverButtonState.friends
-                              ? 'Friends'
-                              : 'Requested',
-                          maxLines: 1,
-                          overflow: TextOverflow.visible,
-                          softWrap: false,
-                          style: TextStyle(
-                            color: person.buttonState == _DiscoverButtonState.friends
-                                ? Colors.green.shade700
-                                : person.buttonState == _DiscoverButtonState.sent
-                                    ? const Color(0xFF1E9CEB)
-                                    : Colors.grey.shade700,
-                            fontSize: 11.0,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                ? ElevatedButton(
+                    onPressed: _isUserBusy(person.uid)
+                        ? null
+                        : () async {
+                            await _runFriendActionForUser(person.uid, () {
+                              return _friendService.acceptFriendRequest(
+                                fromUserId: person.uid,
+                              );
+                            });
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.lightBlue,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 0),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
                       ),
+                    ),
+                    child: const Text(
+                      'Accept',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  )
+                : OutlinedButton(
+                    onPressed:
+                        person.buttonState == _DiscoverButtonState.sent &&
+                            !_isUserBusy(person.uid)
+                        ? () async {
+                            await _runFriendActionForUser(person.uid, () {
+                              return _friendService.cancelFriendRequest(
+                                toUserId: person.uid,
+                              );
+                            });
+                          }
+                        : null,
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color:
+                            person.buttonState == _DiscoverButtonState.friends
+                            ? Colors.green.shade400
+                            : Colors.grey.shade400,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text(
+                      person.buttonState == _DiscoverButtonState.friends
+                          ? 'Friends'
+                          : 'Requested',
+                      maxLines: 1,
+                      overflow: TextOverflow.visible,
+                      softWrap: false,
+                      style: TextStyle(
+                        color:
+                            person.buttonState == _DiscoverButtonState.friends
+                            ? Colors.green.shade700
+                            : person.buttonState == _DiscoverButtonState.sent
+                            ? const Color(0xFF1E9CEB)
+                            : Colors.grey.shade700,
+                        fontSize: 11.0,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -742,9 +857,7 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
         continue;
       }
       final Map<String, dynamic> data = doc.data();
-      final String username = (data['username'] as String?)?.trim().isNotEmpty == true
-          ? (data['username'] as String).trim()
-          : ((data['email'] as String?)?.split('@').first ?? 'User');
+      final String username = resolveDisplayName(data, userId: uid);
       if (query.isNotEmpty && !username.toLowerCase().contains(query)) {
         continue;
       }
@@ -792,10 +905,14 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
       return 0;
     }
     final FirebaseFirestore firestore = FirebaseFirestore.instance;
-    final DocumentSnapshot<Map<String, dynamic>> meSnap =
-        await firestore.collection('users').doc(user.uid).get();
-    final DocumentSnapshot<Map<String, dynamic>> otherSnap =
-        await firestore.collection('users').doc(otherUserId).get();
+    final DocumentSnapshot<Map<String, dynamic>> meSnap = await firestore
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    final DocumentSnapshot<Map<String, dynamic>> otherSnap = await firestore
+        .collection('users')
+        .doc(otherUserId)
+        .get();
     final Set<String> myFriendIds =
         ((meSnap.data()?['friendIds'] as List?) ?? <dynamic>[])
             .whereType<String>()
@@ -838,12 +955,7 @@ class _MyAddFriendsPageState extends State<MyAddFriendsPage> {
   }
 }
 
-enum _DiscoverButtonState {
-  add,
-  sent,
-  received,
-  friends,
-}
+enum _DiscoverButtonState { add, sent, received, friends }
 
 class _DiscoverUser {
   const _DiscoverUser({

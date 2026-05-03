@@ -62,8 +62,9 @@ class _SignUpPageState extends State<SignUpPage> {
       _errorText = null;
     });
 
+    UserCredential? credential;
     try {
-      final UserCredential credential = await FirebaseAuth.instance
+      credential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(
         email: email,
         password: password,
@@ -76,7 +77,7 @@ class _SignUpPageState extends State<SignUpPage> {
         'email': email,
         'username': _generateRandomUsername(),
         'photoUrl': '',
-        'locationTrackingEnabled': true,
+        'locationTrackingEnabled': false,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -99,8 +100,15 @@ class _SignUpPageState extends State<SignUpPage> {
         }
       });
     } catch (_) {
+      if (credential?.user != null) {
+        try {
+          await credential!.user!.delete();
+        } catch (_) {}
+      }
+      await FirebaseAuth.instance.signOut();
       setState(() {
-        _errorText = 'Something went wrong. Please try again.';
+        _errorText =
+            'Account setup was interrupted. Please try creating your account again.';
       });
     } finally {
       if (mounted) {
